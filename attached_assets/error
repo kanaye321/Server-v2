@@ -1,0 +1,20 @@
+1:27:53 PM [vite] Internal server error: Failed to resolve import "@/pages/admin/system-logs" from "client/src/main.tsx?v=krcPCqVlEsoUIyiMC3-5h". Does the file exist?
+  Plugin: vite:import-analysis
+  File: C:/Users/jimenez.n/Downloads/Server-v2 (3)/Server-v2/client/src/main.tsx?v=krcPCqVlEsoUIyiMC3-5h:58:27
+  65 |  import UserPermissions from "@/pages/admin/user-permissions";
+  66 |  import Database from "@/pages/admin/database";
+  67 |  import SystemLogsPage from "@/pages/admin/system-logs";
+     |                              ^
+  68 |  import EmailNotificationsPage from "@/pages/admin/email-notifications";
+  69 |  const queryClient = new QueryClient({
+      at TransformPluginContext._formatError (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:49257:41)
+      at TransformPluginContext.error (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:49252:16)
+      at normalizeUrl (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:64199:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:64331:39)
+      at async Promise.all (index 52)
+      at async TransformPluginContext.transform (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:64258:7)
+      at async PluginContainer.transform (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:49098:18)
+      at async loadAndTransform (C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2\node_modules\vite\dist\node\chunks\dep-CHZK6zbr.js:51931:27)
+
+C:\Users\jimenez.n\Downloads\Server-v2 (3)\Server-v2>
