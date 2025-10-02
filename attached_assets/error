@@ -1,3 +1,4 @@
+🔧 Checking for default admin user...
 Decryption error: Error: Unsupported state or unable to authenticate data
     at Decipheriv.final (node:internal/crypto/cipher:184:29)
     at decrypt (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\encryption.ts:87:27)
@@ -12,3 +13,22 @@ Decryption error: Error: Unsupported state or unable to authenticate data
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
     at async Timeout._onTimeout (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\index.ts:215:27)
 Email not configured - skipping email service initialization
+Browserslist: browsers data (caniuse-lite) is 12 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+3:14:57 PM [express] GET /api/user 401 in 1ms :: {"message":"Not authenticated"}
+Login attempt for username: admin
+Decryption error: Error: Unsupported state or unable to authenticate data
+    at Decipheriv.final (node:internal/crypto/cipher:184:29)
+    at decrypt (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\encryption.ts:87:27)
+    at decryptFields (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\encryption.ts:131:26)
+    at DatabaseStorage.getUserByUsername (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\database-storage.ts:80:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async Strategy._verify (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\auth.ts:69:22)
+3:15:11 PM [express] POST /api/login 500 in 198ms :: {"message":"Failed to decrypt data"}
+Error: Failed to decrypt data
+    at decrypt (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\encryption.ts:92:11)
+    at decryptFields (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\encryption.ts:131:26)
+    at DatabaseStorage.getUserByUsername (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\database-storage.ts:80:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async Strategy._verify (C:\Users\jimenez.n\Downloads\Server-v2 (7)\Server-v2\server\auth.ts:69:22)
