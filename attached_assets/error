@@ -1,6 +1,3 @@
-> cross-env NODE_ENV=development tsx server/index.ts
-
-
 node:internal/modules/run_main:123
     triggerUncaughtException(
     ^
