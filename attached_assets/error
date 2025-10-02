@@ -1,45 +1,4 @@
-✅ Database initialization complete - migrations will proceed
-❌ Error clearing user data: error: update or delete on table "users" violates foreign key constraint "activities_user_id_fkey" on table "activities"
-    at C:\Users\jimenez.n\Downloads\Server-v2 (10)\Server-v2\node_modules\pg-pool\index.js:45:11
+Creating default admin user...
+❌ Failed to initialize default admin user: ReferenceError: UserRole is not defined
+    at Timeout._onTimeout (C:\Users\jimenez.n\Downloads\Server-v2 (10)\Server-v2\server\index.ts:226:17)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async clearEncryptedUserData (C:\Users\jimenez.n\Downloads\Server-v2 (10)\Server-v2\server\clear-encrypted-data.ts:20:5) {
-  length: 286,
-  severity: 'ERROR',
-  code: '23503',
-  detail: 'Key (id)=(1) is still referenced from table "activities".',
-  hint: undefined,
-  position: undefined,
-  internalPosition: undefined,
-  internalQuery: undefined,
-  where: undefined,
-  schema: 'public',
-  table: 'activities',
-  column: undefined,
-  dataType: undefined,
-  constraint: 'activities_user_id_fkey',
-  file: 'ri_triggers.c',
-  line: '2624',
-  routine: 'ri_ReportViolation'
-}
-❌ Operation failed: error: update or delete on table "users" violates foreign key constraint "activities_user_id_fkey" on table "activities"
-    at C:\Users\jimenez.n\Downloads\Server-v2 (10)\Server-v2\node_modules\pg-pool\index.js:45:11
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async clearEncryptedUserData (C:\Users\jimenez.n\Downloads\Server-v2 (10)\Server-v2\server\clear-encrypted-data.ts:20:5) {
-  length: 286,
-  severity: 'ERROR',
-  code: '23503',
-  detail: 'Key (id)=(1) is still referenced from table "activities".',
-  hint: undefined,
-  position: undefined,
-  internalPosition: undefined,
-  internalQuery: undefined,
-  where: undefined,
-  schema: 'public',
-  table: 'activities',
-  column: undefined,
-  dataType: undefined,
-  constraint: 'activities_user_id_fkey',
-  file: 'ri_triggers.c',
-  line: '2624',
-  routine: 'ri_ReportViolation'
-}
