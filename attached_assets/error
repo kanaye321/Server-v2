@@ -1,17 +1,1 @@
-node:internal/modules/run_main:123
-    triggerUncaughtException(
-    ^
-Error [TransformError]: Transform failed with 1 error:
-C:\Users\jimenez.n\Downloads\Server-v2 (14)\Server-v2\server\routes.ts:5169:12: ERROR: Expected identifier but found "*"
-    at failureErrorWithLog (C:\Users\jimenez.n\Downloads\Server-v2 (14)\Server-v2\node_modules\tsx\node_modules\esbuild\lib\main.js:1476:15)
-    at C:\Users\jimenez.n\Downloads\Server-v2 (14)\Server-v2\node_modules\tsx\node_modules\esbuild\lib\main.js:755:50
-    at responseCallbacks.<computed> (C:\Users\jimenez.n\Downloads\Server-v2 (14)\Server-v2\node_modules\tsx\node_modules\esbuild\lib\main.js:622:9)
-    at handleIncomingPacket (C:\Users\jimenez.n\Downloads\Server-v2 (14)\Server-v2\node_modules\tsx\node_modules\esbuild\lib\main.js:677:12)
-    at Socket.readFromStdout (C:\Users\jimenez.n\Downloads\Server-v2 (14)\Server-v2\node_modules\tsx\node_modules\esbuild\lib\main.js:600:7)
-    at Socket.emit (node:events:518:28)
-    at addChunk (node:internal/streams/readable:561:12)
-    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
-    at Readable.push (node:internal/streams/readable:392:5)
-    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
-
-Node.js v22.17.0
+https://confluence.sec.samsung.net/pages/viewpage.action?pageId=454565479&spaceKey=SRPHCOMMONC&title=AWS%2BApproval%2BGuide
