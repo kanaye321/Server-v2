@@ -1,112 +1,41 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <script type="module">
-import { createHotContext } from "/@vite/client";
-const hot = createHotContext("/__dummy__runtime-error-plugin");
+Error:   Failed to scan for dependencies from entries:
+  C:/Users/jimenez.n/Downloads/Server-v2 (5)/Server-v2/client/index.html
 
-function sendError(error) {
-  if (!(error instanceof Error)) {
-    error = new Error("(unknown runtime error)");
-  }
-  const serialized = {
-    message: error.message,
-    stack: error.stack,
-  };
-  hot.send("runtime-error-plugin:error", serialized);
-}
+  X [ERROR] The character "}" is not valid inside a JSX element
 
-window.addEventListener("error", (evt) => {
-  sendError(evt.error);
-});
+    client/src/pages/it-equipment.tsx:421:14:
+      421 │               })}
+          │               ^
+          ╵               {'}'}
 
-window.addEventListener("unhandledrejection", (evt) => {
-  sendError(evt.reason);
-});
-</script>
+  Did you mean to escape it as "{'}'}" instead?
 
-    <script type="module">
-import RefreshRuntime from "/@react-refresh"
-RefreshRuntime.injectIntoGlobalHook(window)
-window.$RefreshReg$ = () => {}
-window.$RefreshSig$ = () => (type) => type
-window.__vite_plugin_react_preamble_installed__ = true
-</script>
 
-    <script type="module" src="/@vite/client"></script>
+X [ERROR] The character "}" is not valid inside a JSX element
 
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>SRPH-MIS Inventory Management</title>
-    <!-- Local font fallback instead of Google Fonts -->
-    <style>
-      /* Fallback font system */
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 400;
-        src: local('Inter Regular'), local('Inter-Regular'), 
-             local('Arial'), local('Helvetica');
-      }
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 500;
-        src: local('Inter Medium'), local('Inter-Medium'),
-             local('Arial Bold'), local('Helvetica Bold');
-      }
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 600;
-        src: local('Inter SemiBold'), local('Inter-SemiBold'),
-             local('Arial Bold'), local('Helvetica Bold');
-      }
-      @font-face {
-        font-family: 'Inter';
-        font-style: normal;
-        font-weight: 700;
-        src: local('Inter Bold'), local('Inter-Bold'),
-             local('Arial Bold'), local('Helvetica Bold');
-      }
-      
-      /* Emergency styles in case CSS files don't load */
-      body {
-        font-family: 'Inter', Arial, Helvetica, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #f8fafc;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx?v=IJw5Sk-1_keXGan9goi0B"></script>
-    <script>
-      // Fix for potential MIME type issues
-      window.addEventListener('DOMContentLoaded', function() {
-        // Check if the application loaded properly
-        setTimeout(function() {
-          var rootElement = document.getElementById('root');
-          if (rootElement && rootElement.children.length === 0) {
-            console.error('Application failed to load properly');
-            rootElement.innerHTML = `
-              <div style="text-align: center; padding: 20px; max-width: 600px; margin: 100px auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                <h2 style="color: #2563eb;">SRPH-MIS Loading Error</h2>
-                <p>The application didn't load correctly. This might be due to:</p>
-                <ul style="text-align: left; margin-bottom: 20px;">
-                  <li>JavaScript files not loading with the correct content type</li>
-                  <li>CSS files not loading properly</li>
-                  <li>Network connectivity issues</li>
-                </ul>
-                <p>Try refreshing the page or checking the browser console for errors.</p>
-                <button onclick="window.location.reload()" style="background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Refresh Page</button>
-              </div>
-            `;
-          }
-        }, 5000);
-      });
-    </script>
-  </body>
-</html>
+    client/src/pages/it-equipment.tsx:421:16:
+      421 │               })}
+          │                 ^
+          ╵                 {'}'}
+
+  Did you mean to escape it as "{'}'}" instead?
+
+
+X [ERROR] Expected ";" but found ":"
+
+    client/src/pages/it-equipment.tsx:423:12:
+      423 │           ) : (
+          │             ^
+          ╵             ;
+
+
+    at failureErrorWithLog (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:1472:15)
+    at C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:945:25
+    at runOnEndCallbacks (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:1315:45)
+    at buildResponseToResult (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:943:7)
+    at C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:955:9
+    at new Promise (<anonymous>)
+    at requestCallbacks.on-end (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:954:54)
+    at handleRequest (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:647:17)
+    at handleIncomingPacket (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:672:7)
+    at Socket.readFromStdout (C:\Users\jimenez.n\Downloads\Server-v2 (5)\Server-v2\node_modules\vite\node_modules\esbuild\lib\main.js:600:7)
