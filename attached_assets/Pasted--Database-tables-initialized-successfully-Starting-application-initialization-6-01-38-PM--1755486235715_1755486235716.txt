@@ -1,0 +1,113 @@
+✅ Database tables initialized successfully.
+🔄 Starting application initialization...
+6:01:38 PM [express] serving on port 5000
+
+🚀 SRPH-MIS is running at: http://0.0.0.0:5000
+💻 Access your app through Replit's webview
+🌐 Network access: http://107.105.221.90:5000
+
+✅ PostgreSQL connection successful
+✅ Using PostgreSQL database - data will persist
+✅ Database initialization complete - migrations will proceed
+🔍 Direct connection test result: ✅ SUCCESS
+🔍 VM monitoring table accessible: ✅ SUCCESS
+🔄 PostgreSQL connection verified - proceeding with migrations...
+🔧 Database URL configured: ✅ YES
+🔧 Database instance available: ✅ YES
+🔧 Connection status flags: {
+  freshConnectionStatus: true,
+  databaseConnected: false,
+  actualConnectionVerified: true
+}
+🔄 Running database migrations...
+🔄 Running database migrations...
+✅ Database connection successful - test query result: Result {
+  command: 'SELECT',
+  rowCount: 1,
+  oid: null,
+  rows: [ { test: 1 } ],
+  fields: [
+    Field {
+      name: 'test',
+      tableID: 0,
+      columnID: 0,
+      dataTypeID: 23,
+      dataTypeSize: 4,
+      dataTypeModifier: -1,
+      format: 'text'
+    }
+  ],
+  _parsers: [ [Function: parseInteger] ],
+  _types: { getTypeParser: [Function: getTypeParser] },
+  RowCtor: null,
+  rowAsArray: false,
+  _prebuiltEmptyResultObject: { test: null }
+}
+📋 Existing tables in database: [
+  'users',
+  'assets',
+  'components',
+  'licenses',
+  'accessories',
+  'license_assignments',
+  'consumables',
+  'consumable_assignments',
+  'activities',
+  'vm_inventory',
+  'vms',
+  'it_equipment',
+  'it_equipment_assignments',
+  'system_settings',
+  'zabbix_settings',
+  'zabbix_subnets',
+  'discovered_hosts',
+  'vm_monitoring',
+  'bitlocker_keys',
+  'settings',
+  'jira_settings'
+]
+🔧 Creating users table...
+✅ Users table created - result: Result {
+  command: 'CREATE',
+  rowCount: null,
+  oid: null,
+  rows: [],
+  fields: [],
+  _parsers: undefined,
+  _types: { getTypeParser: [Function: getTypeParser] },
+  RowCtor: null,
+  rowAsArray: false,
+  _prebuiltEmptyResultObject: null
+}
+❌ Migration failed: error: column "hostname" does not exist
+    at C:\MIS Inventory\naknam\Inventory-Latest\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async runMigrations (C:\MIS Inventory\naknam\Inventory-Latest\server\migrate.ts:513:7)
+    at async <anonymous> (C:\MIS Inventory\naknam\Inventory-Latest\server\index.ts:94:7) {
+  length: 98,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'indexcmds.c',
+  line: '1891',
+  routine: 'ComputeIndexAttrs'
+}
+📍 Error details: {
+  message: 'column "hostname" does not exist',
+  code: '42703',
+  detail: undefined
+}
+❌ Database migrations failed: column "hostname" does not exist
+⚠️ Falling back to in-memory storage
+🔧 Checking for default admin user...
+✅ Default admin user already exists in memory storage

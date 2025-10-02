@@ -1,0 +1,74 @@
+Creating BitLocker key: dasd
+❌ Database error creating BitLocker key: error: insert or update on table "bitlocker_keys" violates foreign key constraint "bitlocker_keys_asset_id_fkey"
+    at C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\node_modules\src\node-postgres\session.ts:104:19)
+    at async DatabaseStorage.createBitlockerKey (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\server\database-storage.ts:1273:24)
+    at async <anonymous> (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\server\routes.ts:3295:19) {
+  length: 283,
+  severity: 'ERROR',
+  code: '23503',
+  detail: 'Key (asset_id)=(23) is not present in table "assets".',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'bitlocker_keys',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'bitlocker_keys_asset_id_fkey',
+  file: 'ri_triggers.c',
+  line: '2610',
+  routine: 'ri_ReportViolation'
+}
+Error creating BitLocker key: error: insert or update on table "bitlocker_keys" violates foreign key constraint "bitlocker_keys_asset_id_fkey"
+    at C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\node_modules\src\node-postgres\session.ts:104:19)
+    at async DatabaseStorage.createBitlockerKey (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\server\database-storage.ts:1273:24)
+    at async <anonymous> (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\server\routes.ts:3295:19) {
+  length: 283,
+  severity: 'ERROR',
+  code: '23503',
+  detail: 'Key (asset_id)=(23) is not present in table "assets".',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'bitlocker_keys',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'bitlocker_keys_asset_id_fkey',
+  file: 'ri_triggers.c',
+  line: '2610',
+  routine: 'ri_ReportViolation'
+}
+error: insert or update on table "bitlocker_keys" violates foreign key constraint "bitlocker_keys_asset_id_fkey"
+    at C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\node_modules\src\node-postgres\session.ts:104:19)
+    at async DatabaseStorage.createBitlockerKey (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\server\database-storage.ts:1273:24)
+    at async <anonymous> (C:\Users\Administrator\Desktop\Inventory1 (5)\Inventory1\server\routes.ts:3295:19) {
+  length: 283,
+  severity: 'ERROR',
+  code: '23503',
+  detail: 'Key (asset_id)=(23) is not present in table "assets".',
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: 'public',
+  table: 'bitlocker_keys',
+  column: undefined,
+  dataType: undefined,
+  constraint: 'bitlocker_keys_asset_id_fkey',
+  file: 'ri_triggers.c',
+  line: '2610',
+  routine: 'ri_ReportViolation'
+}
+4:01:17 PM [express] POST /api/bitlocker-keys 500 in 30ms :: {"message":"insert or update on table \…
