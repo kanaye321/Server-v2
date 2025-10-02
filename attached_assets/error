@@ -1,1827 +1,751 @@
-import {
-  users, assets, components, accessories, licenses, activities, consumables, licenseAssignments, consumableAssignments,
-  itEquipment, itEquipmentAssignments,
-  type User, type InsertUser,
-  type Asset, type InsertAsset,
-  type Activity, type InsertActivity,
-  type License, type InsertLicense,
-  type Accessory, type InsertAccessory,
-  type Component, type InsertComponent,
-  type Consumable, type InsertConsumable,
-  type LicenseAssignment, type InsertLicenseAssignment,
-  type ITEquipment, type InsertITEquipment,
-  AssetStatus, LicenseStatus, AccessoryStatus, ConsumableStatus,
-  // IAM Accounts import
-  iamAccounts, type IamAccount, type InsertIamAccount
-} from "@shared/schema";
-import { db } from "./db";
-import * as schema from "@shared/schema";
-import { eq, sql, desc, like, or, and } from "drizzle-orm";
-import type {
-  InsertZabbixSettings, InsertZabbixSubnet, InsertDiscoveredHost, InsertVMMonitoring, InsertBitlockerKey
-} from "@shared/schema";
-import type {
-  InsertUser, InsertAsset, InsertActivity, InsertLicense,
-  InsertComponent, InsertAccessory, InsertConsumable,
-  InsertLicenseAssignment, InsertConsumableAssignment
-} from "@shared/schema";
-import { encrypt, decrypt, encryptFields, decryptFields, PII_FIELDS } from "./encryption";
-import type { IStorage } from "./storage";
+import { useState, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { PlusIcon, CheckCircleIcon, MonitorIcon, CalendarIcon, DownloadIcon, UploadIcon, FileDownIcon, SearchIcon, TrashIcon } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
+import ITEquipmentForm from "@/components/it-equipment/it-equipment-form";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Separator } from "@/components/ui/separator";
+import { formatDate, downloadCSV } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import ITEquipmentCSVImport from "@/components/it-equipment/it-equipment-csv-import";
 
-interface AssetStats {
-  total: number;
-  checkedOut: number;
-  available: number;
-  pending: number;
-  overdue: number;
-  archived: number;
-}
+export default function ITEquipment() {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [selectedForAssignment, setSelectedForAssignment] = useState<any | null>(null);
+  const [assignmentData, setAssignmentData] = useState({
+    assignedTo: '',
+    quantity: 1,
+    knoxId: '',
+    serialNumber: '',
+    notes: ''
+  });
+  const { toast } = useToast();
+  const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-export async function initializeDatabase() {
-  try {
-    console.log("🔄 Initializing database tables...");
+  // Fetch IT equipment
+  const { data: equipment = [], isLoading } = useQuery({
+    queryKey: ['/api/it-equipment'],
+    queryFn: async () => {
+      const response = await fetch('/api/it-equipment');
+      if (!response.ok) throw new Error('Failed to fetch IT equipment');
+      return response.json();
+    },
+  });
 
-    // Test database connection first
-    await db.execute(sql`SELECT 1 as test`);
-    console.log("✅ Database connection established/verified");
-    console.log("📊 Using database:", process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':****@'));
-
-    // Import and run migrations
-    const { runMigrations } = await import("./migrate");
-    await runMigrations();
-
-    return;
-
-    console.log("🎉 Database initialization completed successfully!");
-  } catch (error) {
-    console.error("Database initialization failed:", error);
-    throw error;
-  }
-}
-
-export class DatabaseStorage implements IStorage {
-  // User operations
-  async getUsers(): Promise<User[]> {
-    if (!db) throw new Error("Database connection required");
-    const users = await db.select().from(schema.users);
-    // Batch decrypt PII for all users - much faster than individual decryption
-    const { batchDecryptFields } = await import("./encryption");
-    return batchDecryptFields(users, PII_FIELDS.user);
-  }
-
-  async getUser(id: number): Promise<User | undefined> {
-    if (!db) throw new Error("Database connection required");
-    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
-    return user ? decryptFields(user, PII_FIELDS.user) : null;
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    if (!db) throw new Error("Database connection required");
-    const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username));
-    return user ? decryptFields(user, PII_FIELDS.user) : null;
-  }
-
-  async createUser(userData: InsertUser) {
-    if (!db) throw new Error("Database connection required");
-
-    // Hash the password before storing
-    const { scrypt, randomBytes } = await import('crypto');
-    const { promisify } = await import('util');
-    const scryptAsync = promisify(scrypt);
-
-    const salt = randomBytes(16).toString("hex");
-    const buf = (await scryptAsync(userData.password, salt, 64)) as Buffer;
-    const hashedPassword = `${buf.toString("hex")}.${salt}`;
-
-    // Encrypt PII fields
-    const encryptedData = encryptFields(userData, PII_FIELDS.user);
-
-    const [user] = await db.insert(schema.users).values({
-      ...encryptedData,
-      password: hashedPassword,
-    }).returning();
-
-    // Decrypt for return
-    return decryptFields(user, PII_FIELDS.user);
-  }
-
-  async updateUser(id: number, updateData: Partial<InsertUser>): Promise<User | undefined> {
-    // Get the current user if we need to return without updates
-    if (Object.keys(updateData).length === 0) {
-      return await this.getUser(id);
-    }
-
-    // Encrypt PII fields before updating
-    const encryptedUpdateData = encryptFields(updateData, PII_FIELDS.user);
-
-    const [updated] = await db.update(users)
-      .set(encryptedUpdateData)
-      .where(eq(users.id, id))
-      .returning();
-
-    // Decrypt for return
-    return updated ? decryptFields(updated, PII_FIELDS.user) : undefined;
-  }
-
-  async deleteUser(id: number): Promise<boolean> {
-    try {
-      // Get user info before deletion for audit trail
-      const userToDelete = await this.getUser(id);
-      if (!userToDelete) {
-        console.log(`User ${id} not found`);
-        return false;
-      }
-
-      console.log(`Deleting user ${userToDelete.username} (ID: ${id}) from PostgreSQL database...`);
-
-      // First, update activities to preserve audit trail - set userId to null and add deletion note
-      await db.execute(sql`
-        UPDATE activities 
-        SET user_id = NULL, 
-            notes = COALESCE(notes, '') || ' [User deleted: ' || ${userToDelete.username} || ']'
-        WHERE user_id = ${id}
-      `);
-
-      console.log(`Updated activities to preserve audit trail for deleted user`);
-
-      // Update assets to remove user assignments
-      await db.execute(sql`
-        UPDATE assets 
-        SET assigned_to = NULL,
-            status = 'available',
-            checkout_date = NULL,
-            expected_checkin_date = NULL
-        WHERE assigned_to = ${id}
-      `);
-
-      console.log(`Updated assets to remove user assignments`);
-
-      // Then delete the user
-      const deleteResult = await db.delete(users)
-        .where(eq(users.id, id));
-
-      console.log(`Delete result for user ${id}:`, deleteResult);
-
-      if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-        console.log(`User ${userToDelete.username} deleted successfully from PostgreSQL database`);
-        return true;
-      }
-
-      console.log(`No rows affected when deleting user ${id}`);
-      return false;
-    } catch (error) {
-      console.error(`Error deleting user from PostgreSQL database:`, error);
-      throw error;
-    }
-  }
-
-  // Asset operations
-  async getAssets(): Promise<Asset[]> {
-    if (!db) throw new Error("Database connection required");
-    const assets = await db.select().from(schema.assets);
-    // Batch decrypt PII for all assets - optimized for performance
-    const { batchDecryptFields } = await import("./encryption");
-    return batchDecryptFields(assets, PII_FIELDS.asset);
-  }
-
-  async getAsset(id: number): Promise<Asset | undefined> {
-    if (!db) throw new Error("Database connection required");
-    const [asset] = await db.select().from(schema.assets).where(eq(schema.assets.id, id));
-    return asset ? decryptFields(asset, PII_FIELDS.asset) : null;
-  }
-
-  async getAssetByTag(assetTag: string): Promise<Asset | undefined> {
-    const [asset] = await db.select().from(assets).where(eq(assets.assetTag, assetTag));
-    // We don't encrypt assetTag, so no decryption needed here.
-    return asset;
-  }
-
-  async createAsset(assetData: InsertAsset): Promise<Asset> {
-    if (!db) throw new Error("Database connection required");
-    // Encrypt PII fields
-    const encryptedData = encryptFields(assetData, PII_FIELDS.asset);
-    const [asset] = await db.insert(schema.assets).values(encryptedData).returning();
-    // Decrypt for return
-    return decryptFields(asset, PII_FIELDS.asset);
-  }
-
-  async updateAsset(id: number, updateData: Partial<InsertAsset>): Promise<Asset | undefined> {
-    // Encrypt PII fields before updating
-    const encryptedUpdateData = encryptFields(updateData, PII_FIELDS.asset);
-
-    const [updated] = await db.update(assets)
-      .set(encryptedUpdateData)
-      .where(eq(assets.id, id))
-      .returning();
-    return updated ? decryptFields(updated, PII_FIELDS.asset) : undefined;
-  }
-
-  async deleteAsset(id: number): Promise<boolean> {
-    try {
-      console.log(`Deleting asset with ID: ${id} from PostgreSQL database...`);
-
-      // Get asset info before deletion for logging
-      const assetToDelete = await this.getAsset(id);
-      if (!assetToDelete) {
-        console.log(`Asset ${id} not found`);
-        return false;
-      }
-
-      console.log(`Deleting asset: ${assetToDelete.name} (${assetToDelete.assetTag})`);
-
-      // Delete the asset from PostgreSQL
-      const deleteResult = await db.delete(assets)
-        .where(eq(assets.id, id));
-
-      console.log(`Delete result for asset ${id}:`, deleteResult);
-
-      if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-        console.log(`Asset ${assetToDelete.name} deleted successfully from PostgreSQL database`);
-        return true;
-      }
-
-      console.log(`No rows affected when deleting asset ${id}`);
-      return false;
-    } catch (error) {
-      console.error(`Error deleting asset from PostgreSQL database:`, error);
-      throw error;
-    }
-  }
-
-  // Component operations
-  async getComponents(): Promise<Component[]> {
-    try {
-      return await db.select().from(components);
-    } catch (error) {
-      console.error('Error fetching components:', error);
-      return [];
-    }
-  }
-
-  async getComponent(id: number): Promise<Component | undefined> {
-    try {
-      const [component] = await db.select().from(components).where(eq(components.id, id));
-      return component;
-    } catch (error) {
-      console.error('Error fetching component:', error);
-      return undefined;
-    }
-  }
-
-
-  async createComponent(data: any) {
-    try {
-      // Ensure all required fields are present and properly typed
-      const componentData = {
-        name: data.name,
-        type: data.type,
-        category: data.category || 'General',
-        serialNumber: data.serialNumber || null,
-        manufacturer: data.manufacturer || null,
-        model: data.model || null,
-        specifications: data.specifications || null,
-        status: data.status || 'available',
-        location: data.location || null,
-        assignedTo: data.assignedTo || null,
-        purchaseDate: data.purchaseDate || null,
-        purchaseCost: data.purchaseCost ? parseFloat(data.purchaseCost.toString()) : null,
-        warrantyExpiry: data.warrantyExpiry || null,
-        notes: data.notes || null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      const [component] = await db.insert(schema.components).values(componentData).returning();
-      return component;
-    } catch (error) {
-      console.error('Error creating component in database:', error);
-      // If database fails, still try to create in memory storage as fallback
-      throw error;
-    }
-  }
-
-  async updateComponent(id: number, updateData: Partial<InsertComponent>): Promise<Component | undefined> {
-    try {
-      const [component] = await db.select().from(components).where(eq(components.id, id));
-      if (!component) return undefined;
-
-      // Convert quantity from string to number if needed
-      if (typeof updateData.quantity === 'string') {
-        updateData.quantity = parseInt(updateData.quantity);
-      }
-
-      const [updated] = await db.update(components)
-        .set(updateData)
-        .where(eq(components.id, id))
-        .returning();
-
-      if (updated) {
-        // Create activity record
-        await this.createActivity({
-          action: "update",
-          itemType: "component",
-          itemId: id,
-          userId: null,
-          timestamp: new Date().toISOString(),
-          notes: `Component "${component.name}" updated`,
-        });
-      }
-
-      return updated;
-    } catch (error) {
-      console.error('Error updating component:', error);
-      throw error;
-    }
-  }
-
-  async deleteComponent(id: number): Promise<boolean> {
-    try {
-      console.log(`Deleting component with ID: ${id} from PostgreSQL database...`);
-
-      const [component] = await db.select().from(components).where(eq(components.id, id));
-      if (!component) {
-        console.log(`Component ${id} not found`);
-        return false;
-      }
-
-      console.log(`Deleting component: ${component.name}`);
-
-      const deleteResult = await db.delete(components)
-        .where(eq(components.id, id));
-
-      console.log(`Delete result for component ${id}:`, deleteResult);
-
-      if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-        // Create activity record
-        try {
-          await this.createActivity({
-            action: "delete",
-            itemType: "component",
-            itemId: id,
-            userId: null,
-            timestamp: new Date().toISOString(),
-            notes: `Component "${component.name}" deleted`,
-          });
-        } catch (activityError) {
-          console.warn("Failed to log component delete activity:", activityError);
+  // Create IT equipment mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      try {
+        // Validate data before sending
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid data provided');
         }
 
-        console.log(`Component ${component.name} deleted successfully from PostgreSQL database`);
-        return true;
+        const response = await fetch('/api/it-equipment', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Failed to create IT equipment');
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error('Error creating IT equipment:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      setIsDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/it-equipment'] });
+      toast({
+        title: "Equipment added",
+        description: "The IT equipment has been added successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "There was an error adding the equipment. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleEquipmentSubmit = (data: any) => {
+    createMutation.mutate(data);
+  };
+
+  // Assignment mutation
+  const assignmentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await fetch(`/api/it-equipment/${selectedForAssignment?.id}/assign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to assign equipment');
       }
 
-      console.log(`No rows affected when deleting component ${id}`);
-      return false;
-    } catch (error) {
-      console.error('Error deleting component from PostgreSQL database:', error);
-      return false;
+      return response.json();
+    },
+    onSuccess: () => {
+      setIsAssignDialogOpen(false);
+      setSelectedForAssignment(null);
+      setAssignmentData({ assignedTo: '', quantity: 1, knoxId: '', serialNumber: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/it-equipment'] });
+      toast({
+        title: "Success",
+        description: "Equipment has been assigned successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Assignment error:', error);
+      toast({
+        title: "Assignment Failed",
+        description: error.message,
+        variant: "destructive",
+      });
     }
-  }
+  });
 
-  // Accessory operations
-  async getAccessories(): Promise<Accessory[]> {
-    return await db.select().from(accessories);
-  }
-
-  async getAccessory(id: number): Promise<Accessory | undefined> {
-    const [accessory] = await db.select().from(accessories).where(eq(accessories.id, id));
-    return accessory;
-  }
-
-  async createAccessory(insertAccessory: InsertAccessory): Promise<Accessory> {
-    // Make sure quantity is a number
-    const processedAccessory = {
-      ...insertAccessory,
-      quantity: typeof insertAccessory.quantity === 'string'
-        ? parseInt(insertAccessory.quantity)
-        : insertAccessory.quantity
-    };
-
-    const [accessory] = await db.insert(accessories).values(processedAccessory).returning();
-
-    // Create activity record
-    await this.createActivity({
-      action: "create",
-      itemType: "accessory",
-      itemId: accessory.id,
-      userId: null,
-      timestamp: new Date().toISOString(),
-      notes: `Accessory "${accessory.name}" created`,
+  const handleAssignEquipment = (equipment: any) => {
+    setSelectedForAssignment(equipment);
+    setAssignmentData({ 
+      assignedTo: '', 
+      quantity: 1, 
+      knoxId: '', 
+      serialNumber: '', 
+      notes: '' 
     });
+    setIsAssignDialogOpen(true);
+  };
 
-    return accessory;
-  }
-
-  async updateAccessory(id: number, updateData: Partial<InsertAccessory>): Promise<Accessory | undefined> {
-    const [accessory] = await db.select().from(accessories).where(eq(accessories.id, id));
-    if (!accessory) return undefined;
-
-    // Convert quantity from string to number if needed
-    if (typeof updateData.quantity === 'string') {
-      updateData.quantity = parseInt(updateData.quantity);
-    }
-
-    const [updated] = await db.update(accessories)
-      .set(updateData)
-      .where(eq(accessories.id, id))
-      .returning();
-
-    if (updated) {
-      // Create activity record
-      await this.createActivity({
-        action: "update",
-        itemType: "accessory",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `Accessory "${accessory.name}" updated`,
+  const handleAssignmentSubmit = () => {
+    if (!assignmentData.assignedTo.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter who the equipment is assigned to.",
+        variant: "destructive",
       });
+      return;
     }
 
-    return updated;
-  }
-
-  async deleteAccessory(id: number): Promise<boolean> {
-    const [accessory] = await db.select().from(accessories).where(eq(accessories.id, id));
-    if (!accessory) return false;
-
-    const [deleted] = await db.delete(accessories)
-      .where(eq(accessories.id, id))
-      .returning();
-
-    if (deleted) {
-      // Create activity record
-      await this.createActivity({
-        action: "delete",
-        itemType: "accessory",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `Accessory "${accessory.name}" deleted`,
+    const availableQuantity = (selectedForAssignment?.totalQuantity || 0) - (selectedForAssignment?.assignedQuantity || 0);
+    
+    if (assignmentData.quantity <= 0 || assignmentData.quantity > availableQuantity) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid quantity.",
+        variant: "destructive",
       });
+      return;
     }
 
-    return !!deleted;
-  }
+    assignmentMutation.mutate(assignmentData);
+  };
 
-  // Consumable operations
-  async getConsumables(): Promise<Consumable[]> {
-    try {
-      // Try database first
-      const dbConsumables = await db.select().from(consumables);
+  const handleExportCSV = async () => {
+    if (equipment && equipment.length > 0) {
+      try {
+        // Fetch assignment data for all equipment
+        const equipmentWithAssignments = await Promise.all(
+          equipment.map(async (item) => {
+            try {
+              const response = await fetch(`/api/it-equipment/${item.id}/assignments`);
+              const assignments = response.ok ? await response.json() : [];
 
-      return dbConsumables;
-    } catch (error) {
-      console.error('Error fetching consumables from database:', error);
-      return [];
-    }
-  }
-
-  async getConsumable(id: number): Promise<Consumable | undefined> {
-    try {
-      const [consumable] = await db.select().from(consumables).where(eq(consumables.id, id));
-      return consumable;
-    } catch (error) {
-      console.error('Error fetching consumable:', error);
-      return undefined;
-    }
-  }
-
-  async createConsumable(insertConsumable: InsertConsumable): Promise<Consumable> {
-    try {
-      // Make sure quantity is a number
-      const processedConsumable = {
-        ...insertConsumable,
-        quantity: typeof insertConsumable.quantity === 'string'
-          ? parseInt(insertConsumable.quantity)
-          : insertConsumable.quantity || 1
-      };
-
-      const [consumable] = await db.insert(consumables).values(processedConsumable).returning();
-
-      // Create activity record
-      await this.createActivity({
-        action: "create",
-        itemType: "consumable",
-        itemId: consumable.id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `Consumable "${consumable.name}" created`,
-      });
-
-      return consumable;
-    } catch (error) {
-      console.error('Error creating consumable:', error);
-      throw error;
-    }
-  }
-
-  async updateConsumable(id: number, updateData: Partial<InsertConsumable>): Promise<Consumable | undefined> {
-    const [consumable] = await db.select().from(consumables).where(eq(consumables.id, id));
-    if (!consumable) return undefined;
-
-    // Convert quantity from string to number if needed
-    if (typeof updateData.quantity === 'string') {
-      updateData.quantity = parseInt(updateData.quantity);
-    }
-
-    const [updated] = await db.update(consumables)
-      .set(updateData)
-      .where(eq(consumables.id, id))
-      .returning();
-
-    if (updated) {
-      // Create activity record
-      await this.createActivity({
-        action: "update",
-        itemType: "consumable",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `Consumable "${consumable.name}" updated`,
-      });
-    }
-
-    return updated;
-  }
-
-  async deleteConsumable(id: number): Promise<boolean> {
-    try {
-      const consumable = await this.getConsumable(id);
-      if (!consumable) return false;
-
-      await db.delete(consumables).where(eq(consumables.id, id));
-
-      // Create activity record
-      await this.createActivity({
-        action: "delete",
-        itemType: "consumable",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `Consumable "${consumable.name}" deleted`,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Error deleting consumable:', error);
-      return false;
-    }
-  }
-
-  async getConsumableAssignments(consumableId: number): Promise<any[]> {
-    try {
-      // First try to test the database connection
-      await db.execute(sql`SELECT 1`);
-
-      // Check if table exists
-      const tableExists = await db.execute(sql`
-        SELECT EXISTS (
-          SELECT 1
-          FROM information_schema.tables
-          WHERE table_name = 'consumable_assignments'
+              // If there are assignments, create multiple rows (one per assignment)
+              if (assignments && assignments.length > 0) {
+                return assignments.map((assignment: any) => ({
+                  name: item.name,
+                  category: item.category,
+                  totalQuantity: item.totalQuantity,
+                  model: item.model || '',
+                  location: item.location || '',
+                  dateAcquired: item.dateAcquired || '',
+                  knoxId: item.knoxId || '',
+                  serialNumber: item.serialNumber || '',
+                  dateRelease: item.dateRelease || '',
+                  remarks: item.remarks || '',
+                  status: item.status,
+                  assignedTo: assignment.assignedTo || '',
+                  assignedQuantity: assignment.quantity || '',
+                  assignedDate: assignment.assignedDate || '',
+                  assignmentKnoxId: assignment.knoxId || '',
+                  assignmentSerialNumber: assignment.serialNumber || '',
+                  assignmentNotes: assignment.notes || ''
+                }));
+              } else {
+                // No assignments, return equipment with empty assignment fields
+                return [{
+                  name: item.name,
+                  category: item.category,
+                  totalQuantity: item.totalQuantity,
+                  model: item.model || '',
+                  location: item.location || '',
+                  dateAcquired: item.dateAcquired || '',
+                  knoxId: item.knoxId || '',
+                  serialNumber: item.serialNumber || '',
+                  dateRelease: item.dateRelease || '',
+                  remarks: item.remarks || '',
+                  status: item.status,
+                  assignedTo: '',
+                  assignedQuantity: '',
+                  assignedDate: '',
+                  assignmentKnoxId: '',
+                  assignmentSerialNumber: '',
+                  assignmentNotes: ''
+                }];
+              }
+            } catch (error) {
+              console.error(`Error fetching assignments for equipment ${item.id}:`, error);
+              return [{
+                name: item.name,
+                category: item.category,
+                totalQuantity: item.totalQuantity,
+                model: item.model || '',
+                location: item.location || '',
+                dateAcquired: item.dateAcquired || '',
+                knoxId: item.knoxId || '',
+                serialNumber: item.serialNumber || '',
+                dateRelease: item.dateRelease || '',
+                remarks: item.remarks || '',
+                status: item.status,
+                assignedTo: '',
+                assignedQuantity: '',
+                assignedDate: '',
+                assignmentKnoxId: '',
+                assignmentSerialNumber: '',
+                assignmentNotes: ''
+              }];
+            }
+          })
         );
-      `);
 
-      if (!tableExists.rows?.[0]?.exists) {
-        console.log('Consumable assignments table does not exist, returning empty array');
-        return [];
-      }
+        // Flatten the array of arrays
+        const csvData = equipmentWithAssignments.flat();
+        downloadCSV(csvData, 'it_equipment_with_assignments.csv');
 
-      const assignments = await db.select()
-        .from(schema.consumableAssignments)
-        .where(eq(schema.consumableAssignments.consumableId, consumableId))
-        .orderBy(desc(schema.consumableAssignments.assignedDate));
-      return assignments;
-    } catch (error) {
-      console.error('Error fetching consumable assignments:', error);
-      // Return empty array if database connection fails
-      return [];
-    }
-  }
-
-  async assignConsumable(consumableId: number, assignmentData: any): Promise<any> {
-    try {
-      // First check if consumable exists using the memory fallback
-      let consumable;
-      try {
-        consumable = await this.getConsumable(consumableId);
-      } catch (dbError) {
-        console.error('Database error while checking consumable:', dbError);
-      }
-
-      if (!consumable) {
-        throw new Error('Consumable not found');
-      }
-
-      // Try database assignment first
-      try {
-        // Test database connection
-        await db.execute(sql`SELECT 1`);
-
-        // Ensure consumable_assignments table exists
-        await db.execute(sql`
-          CREATE TABLE IF NOT EXISTS consumable_assignments (
-            id SERIAL PRIMARY KEY,
-            consumable_id INTEGER NOT NULL,
-            assigned_to TEXT NOT NULL,
-            serial_number TEXT,
-            knox_id TEXT,
-            quantity INTEGER NOT NULL DEFAULT 1,
-            assigned_date TEXT NOT NULL,
-            returned_date TEXT,
-            status TEXT NOT NULL DEFAULT 'assigned',
-            notes TEXT,
-            CONSTRAINT fk_consumable_assignment FOREIGN KEY (consumable_id) REFERENCES consumables(id) ON DELETE CASCADE
-          );
-        `);
-
-        // Create assignment record
-        const [assignment] = await db.insert(schema.consumableAssignments).values({
-          consumableId,
-          assignedTo: assignmentData.assignedTo,
-          serialNumber: assignmentData.serialNumber || null,
-          knoxId: assignmentData.knoxId || null,
-          quantity: assignmentData.quantity || 1,
-          assignedDate: new Date().toISOString(),
-          status: 'assigned',
-          notes: assignmentData.notes || null
-        }).returning();
-
-        // Create activity record
-        try {
-          await this.createActivity({
-            action: "checkout",
-            itemType: "consumable",
-            itemId: consumableId,
-            userId: null,
-            timestamp: new Date().toISOString(),
-            notes: `Consumable assigned to ${assignmentData.assignedTo}`,
-          });
-        } catch (activityError) {
-          console.warn('Failed to create activity record:', activityError);
-        }
-
-        return assignment;
-      } catch (dbError) {
-        console.warn('Database assignment failed, using fallback mode:', dbError);
-
-        // Fallback assignment mode
-        const fallbackAssignment = {
-          id: Date.now(),
-          consumableId,
-          assignedTo: assignmentData.assignedTo,
-          serialNumber: assignmentData.serialNumber || null,
-          knoxId: assignmentData.knoxId || null,
-          quantity: assignmentData.quantity || 1,
-          assignedDate: new Date().toISOString(),
-          status: 'assigned',
-          notes: assignmentData.notes || null
-        };
-
-        console.log('Assignment created in fallback mode:', fallbackAssignment);
-        return fallbackAssignment;
-      }
-    } catch (error) {
-      console.error('Error assigning consumable:', error);
-      throw error;
-    }
-  }
-
-  // License operations
-  async getLicenses(): Promise<License[]> {
-    return await db.select().from(licenses);
-  }
-
-  async getLicense(id: number): Promise<License | undefined> {
-    const [license] = await db.select().from(licenses).where(eq(licenses.id, id));
-    return license;
-  }
-
-  async createLicense(insertLicense: InsertLicense): Promise<License> {
-    try {
-      // Test database connection
-      await db.execute(sql`SELECT 1`);
-
-      const [license] = await db.insert(licenses).values(insertLicense).returning();
-
-      // Create activity record
-      await this.createActivity({
-        action: "create",
-        itemType: "license",
-        itemId: license.id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `License "${license.name}" created`,
-      });
-
-      console.log(`✅ License "${license.name}" created in PostgreSQL database`);
-      return license;
-    } catch (error) {
-      console.error('❌ Database error creating license:', error);
-      throw new Error('Failed to create license: Database connection required');
-    }
-  }
-
-  async updateLicense(id: number, updateData: Partial<InsertLicense>): Promise<License | undefined> {
-    const [license] = await db.select().from(licenses).where(eq(licenses.id, id));
-    if (!license) return undefined;
-
-    const [updated] = await db.update(licenses)
-      .set(updateData)
-      .where(eq(licenses.id, id))
-      .returning();
-
-    if (updated) {
-      // Create activity record
-      await this.createActivity({
-        action: "update",
-        itemType: "license",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `License "${license.name}" updated`,
-      });
-    }
-
-    return updated;
-  }
-
-  async deleteLicense(id: number): Promise<boolean> {
-    const [license] = await db.select().from(licenses).where(eq(licenses.id, id));
-    if (!license) return false;
-
-    try {
-      // First delete all license assignments related to this license
-      await db.delete(licenseAssignments)
-        .where(eq(licenseAssignments.licenseId, id));
-
-      // Then delete the license
-      const [deleted] = await db.delete(licenses)
-        .where(eq(licenses.id, id))
-        .returning();
-
-      if (deleted) {
-        // Create activity record
-        await this.createActivity({
-          action: "delete",
-          itemType: "license",
-          itemId: id,
-          userId: null,
-          timestamp: new Date().toISOString(),
-          notes: `License "${license.name}" deleted`,
+        toast({
+          title: "Export successful",
+          description: `Exported ${csvData.length} records including assignment data.`,
+        });
+      } catch (error) {
+        console.error('Export error:', error);
+        toast({
+          title: "Export failed",
+          description: "Failed to export IT equipment data with assignments.",
+          variant: "destructive",
         });
       }
-
-      return !!deleted;
-    } catch (error) {
-      console.error("Error deleting license:", error);
-      throw error;
+    } else {
+      toast({
+        title: "No data to export",
+        description: "There is no IT equipment data to export.",
+      });
     }
-  }
+  };
 
-  // License assignment operations
-  async getLicenseAssignments(licenseId: number): Promise<LicenseAssignment[]> {
-    return await db.select()
-      .from(licenseAssignments)
-      .where(eq(licenseAssignments.licenseId, licenseId))
-      .orderBy(licenseAssignments.assignedDate);
-  }
-
-  async createLicenseAssignment(insertAssignment: InsertLicenseAssignment): Promise<LicenseAssignment> {
-    const [assignment] = await db
-      .insert(licenseAssignments)
-      .values(insertAssignment)
-      .returning();
-
-    // Create activity record
-    await this.createActivity({
-      action: "update",
-      itemType: "license",
-      itemId: insertAssignment.licenseId,
-      userId: null,
-      timestamp: new Date().toISOString(),
-      notes: `License seat assigned to: ${insertAssignment.assignedTo}`,
+  const handleSelectEquipment = (equipmentId: string, checked: boolean) => {
+    setSelectedEquipment((prevSelected) => {
+      if (checked) {
+        return [...prevSelected, equipmentId];
+      } else {
+        return prevSelected.filter((id) => id !== equipmentId);
+      }
     });
-
-    return assignment;
-  }
-
-  // Checkout/checkin operations
-  async checkoutAsset(assetId: number, userId: number, expectedCheckinDate?: string, customNotes?: string): Promise<Asset | undefined> {
-    const [asset] = await db.select().from(assets).where(eq(assets.id, assetId));
-    const [user] = await db.select().from(users).where(eq(users.id, userId));
-
-    if (!asset || !user) return undefined;
-    if (asset.status !== AssetStatus.AVAILABLE) return undefined;
-
-    const today = new Date().toISOString().split("T")[0];
-
-    const [updatedAsset] = await db.update(assets)
-      .set({
-        status: AssetStatus.DEPLOYED,
-        assignedTo: userId,
-        checkoutDate: today,
-        expectedCheckinDate: expectedCheckinDate || null,
-      })
-      .where(eq(assets.id, assetId))
-      .returning();
-
-    if (updatedAsset) {
-      // Create activity record
-      await this.createActivity({
-        action: "checkout",
-        itemType: "asset",
-        itemId: assetId,
-        userId,
-        timestamp: new Date().toISOString(),
-        notes: customNotes || `Asset ${asset.name} (${asset.assetTag}) checked out to ${user.firstName} ${user.lastName}`,
-      });
-    }
-
-    return updatedAsset;
-  }
-
-  async checkinAsset(assetId: number): Promise<Asset | undefined> {
-    const [asset] = await db.select().from(assets).where(eq(assets.id, assetId));
-
-    if (!asset) return undefined;
-    if (asset.status !== AssetStatus.DEPLOYED && asset.status !== AssetStatus.OVERDUE) return undefined;
-
-    const [updatedAsset] = await db.update(assets)
-      .set({
-        status: AssetStatus.AVAILABLE,
-        assignedTo: null,
-        checkoutDate: null,
-        expectedCheckinDate: null,
-        knoxId: null, // Clear the Knox ID when checking in
-      })
-      .where(eq(assets.id, assetId))
-      .returning();
-
-    if (updatedAsset) {
-      // Create activity record
-      await this.createActivity({
-        action: "checkin",
-        itemType: "asset",
-        itemId: assetId,
-        userId: asset.assignedTo,
-        timestamp: new Date().toISOString(),
-        notes: `Asset ${asset.name} (${asset.assetTag}) checked in`,
-      });
-    }
-
-    return updatedAsset;
-  }
-
-  // Activity operations
-  async getActivities(): Promise<Activity[]> {
-    // Order by timestamp descending for newest first
-    return await db.select()
-      .from(activities)
-      .orderBy(activities.timestamp);
-  }
-
-  async getActivitiesByUser(userId: number): Promise<Activity[]> {
-    return await db.select()
-      .from(activities)
-      .where(eq(activities.userId, userId))
-      .orderBy(activities.timestamp);
-  }
-
-  async getActivitiesByAsset(assetId: number): Promise<Activity[]> {
-    return await db.select()
-      .from(activities)
-      .where(eq(activities.itemId, assetId))
-      .orderBy(activities.timestamp);
-  }
-
-  async createActivity(insertActivity: InsertActivity): Promise<Activity> {
-    const [activity] = await db.insert(activities).values(insertActivity).returning();
-    return activity;
-  }
-
-  // Stats and summaries
-  async getAssetStats(): Promise<AssetStats> {
-    const allAssets = await db.select().from(assets);
-
-    return {
-      total: allAssets.length,
-      checkedOut: allAssets.filter(asset => asset.status === AssetStatus.DEPLOYED).length,
-      available: allAssets.filter(asset => asset.status === AssetStatus.AVAILABLE).length,
-      pending: allAssets.filter(asset => asset.status === AssetStatus.PENDING).length,
-      overdue: allAssets.filter(asset => asset.status === AssetStatus.OVERDUE).length,
-      archived: allAssets.filter(asset => asset.status === AssetStatus.ARCHIVED).length,
-    };
-  }
-
-  // Zabbix settings operations (stub implementations for now)
-  async getZabbixSettings(): Promise<any> {
-    return undefined;
-  }
-
-  async saveZabbixSettings(settings: any): Promise<any> {
-    return settings;
-  }
-
-  // Zabbix subnet operations (stub implementations)
-  async getZabbixSubnets(): Promise<any[]> {
-    return [];
-  }
-
-  async getZabbixSubnet(id: number): Promise<any> {
-    return undefined;
-  }
-
-  async createZabbixSubnet(subnet: any): Promise<any> {
-    return subnet;
-  }
-
-  async deleteZabbixSubnet(id: number): Promise<boolean> {
-    return true;
-  }
-
-  // VM monitoring operations (stub implementations)
-  async getVMMonitoring(): Promise<any[]> {
-    return [];
-  }
-
-  async getVMMonitoringByVMId(vmId: number): Promise<any> {
-    return undefined;
-  }
-
-  async createVMMonitoring(monitoring: any): Promise<any> {
-    return monitoring;
-  }
-
-  async updateVMMonitoring(id: number, monitoring: any): Promise<any> {
-    return monitoring;
-  }
-
-  // Discovered hosts operations (stub implementations)
-  async getDiscoveredHosts(): Promise<any[]> {
-    return [];
-  }
-
-  async getDiscoveredHost(id: number): Promise<any> {
-    return undefined;
-  }
-
-  async createDiscoveredHost(host: any): Promise<any> {
-    return host;
-  }
-
-  async updateDiscoveredHost(id: number, host: any): Promise<any> {
-    return host;
-  }
-
-  async deleteDiscoveredHost(id: number): Promise<boolean> {
-    return true;
-  }
-
-  // BitLocker keys operations
-  async getBitlockerKeys(): Promise<any[]> {
-    if (!db) throw new Error("Database connection required");
-    const keys = await db.select().from(schema.bitlockerKeys).orderBy(desc(schema.bitlockerKeys.dateAdded));
-    // Batch decrypt PII for all keys
-    const { batchDecryptFields } = await import("./encryption");
-    return batchDecryptFields(keys, PII_FIELDS.bitlockerKey);
-  }
-
-  async getBitlockerKey(id: number): Promise<any> {
-    if (!db) throw new Error("Database connection required");
-    const [key] = await db.select().from(schema.bitlockerKeys).where(eq(schema.bitlockerKeys.id, id));
-    return key ? decryptFields(key, PII_FIELDS.bitlockerKey) : null;
-  }
-
-  async getBitlockerKeyBySerialNumber(serialNumber: string): Promise<any[]> {
-    try {
-      // Assuming serialNumber is not encrypted, or encrypted with a separate key/method
-      // If it IS encrypted and needs decryption, adjust accordingly.
-      return await db.select().from(schema.bitlockerKeys).where(eq(schema.bitlockerKeys.serialNumber, serialNumber));
-    } catch (error) {
-      console.error('❌ Database error fetching BitLocker keys by serial:', error);
-      return [];
-    }
-  }
-
-  async getBitlockerKeyByIdentifier(identifier: string): Promise<any[]> {
-    try {
-      // Assuming identifier is not encrypted, or encrypted with a separate key/method
-      // If it IS encrypted and needs decryption, adjust accordingly.
-      return await db.select().from(schema.bitlockerKeys).where(eq(schema.bitlockerKeys.identifier, identifier));
-    } catch (error) {
-      console.error('❌ Database error fetching BitLocker keys by identifier:', error);
-      return [];
-    }
-  }
-
-  async createBitlockerKey(data: any): Promise<any> {
-    if (!db) throw new Error("Database connection required");
-
-    // Encrypt all sensitive BitLocker fields
-    const encryptedData = encryptFields(data, PII_FIELDS.bitlockerKey);
-
-    const [key] = await db.insert(schema.bitlockerKeys).values({
-      ...encryptedData,
-      dateAdded: new Date(),
-      updatedAt: new Date()
-    }).returning();
-
-    // Decrypt for return
-    return decryptFields(key, PII_FIELDS.bitlockerKey);
-  }
-
-  async updateBitlockerKey(id: number, key: any): Promise<any> {
-    try {
-      // Encrypt PII fields before updating
-      const encryptedData = encryptFields(key, PII_FIELDS.bitlockerKey);
-
-      const [updated] = await db.update(schema.bitlockerKeys)
-        .set({ ...encryptedData, updatedAt: new Date() })
-        .where(eq(schema.bitlockerKeys.id, id))
-        .returning();
-
-      // Decrypt for return
-      return updated ? decryptFields(updated, PII_FIELDS.bitlockerKey) : undefined;
-    } catch (error) {
-      console.error('❌ Database error updating BitLocker key:', error);
-      throw new Error('Failed to update BitLocker key: Database connection required');
-    }
-  }
-
-  async deleteBitlockerKey(id: number): Promise<boolean> {
-    try {
-      const [key] = await db.select().from(schema.bitlockerKeys).where(eq(schema.bitlockerKeys.id, id));
-      if (!key) return false;
-
-      await db.delete(schema.bitlockerKeys).where(eq(schema.bitlockerKeys.id, id));
-
-      console.log(`✅ BitLocker key deleted from PostgreSQL database`);
-
-      await this.createActivity({
-        action: "delete",
-        itemType: "bitlocker-key",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `BitLocker key for ${key.serialNumber} deleted`,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('❌ Database error deleting BitLocker key:', error);
-      return false;
-    }
-  }
-
-  // VM Inventory operations - using PostgreSQL tables
-  async getVmInventory(): Promise<any[]> {
-    try {
-      const vms = await db.select().from(schema.vmInventory);
-      // Batch decrypt PII for all VMs - uses optimized batch processing
-      return batchDecryptFields(vms, PII_FIELDS.vmInventory);
-    } catch (error) {
-      console.error('Error fetching VM inventory:', error);
-      return [];
-    }
-  }
-
-  async getVmInventoryItem(id: number): Promise<any> {
-    try {
-      const [vm] = await db.select().from(schema.vmInventory).where(eq(schema.vmInventory.id, id));
-      return vm ? decryptFields(vm, PII_FIELDS.vmInventory) : undefined;
-    } catch (error) {
-      console.error('Error fetching VM inventory item:', error);
-      return undefined;
-    }
-  }
-
-  // Add method to get VMs (alias for VM inventory)
-  async getVMs(): Promise<any[]> {
-    return this.getVmInventory();
-  }
-
-  async getVM(id: number): Promise<any> {
-    return this.getVmInventoryItem(id);
-  }
-
-  async createVM(vmData: any): Promise<any> {
-    return this.createVmInventoryItem(vmData);
-  }
-
-  async updateVM(id: number, vmData: any): Promise<any> {
-    return this.updateVmInventoryItem(id, vmData);
-  }
-
-  async deleteVM(id: number): Promise<boolean> {
-    return this.deleteVmInventoryItem(id);
-  }
-
-  async createVmInventoryItem(vm: any): Promise<any> {
-    try {
-      // Encrypt PII fields before inserting
-      const encryptedData = encryptFields(vm, PII_FIELDS.vmInventory);
-
-      const [newVM] = await db.insert(schema.vmInventory).values({
-        startDate: encryptedData.startDate,
-        endDate: encryptedData.endDate,
-        hypervisor: encryptedData.hypervisor,
-        hostName: encryptedData.hostName,
-        hostModel: encryptedData.hostModel,
-        hostIp: encryptedData.hostIp,
-        hostOs: encryptedData.hostOs,
-        rack: encryptedData.rack,
-        vmId: encryptedData.vmId,
-        vmName: encryptedData.vmName,
-        vmStatus: encryptedData.vmStatus || encryptedData.powerState || 'stopped',
-        vmIp: encryptedData.vmIp,
-        internetAccess: encryptedData.internetAccess || false,
-        vmOs: encryptedData.vmOs,
-        vmOsVersion: encryptedData.vmOsVersion,
-        deployedBy: encryptedData.deployedBy,
-        user: encryptedData.user,
-        department: encryptedData.department,
-        jiraTicket: encryptedData.jiraTicket,
-        remarks: encryptedData.remarks,
-        dateDeleted: encryptedData.dateDeleted,
-        // Legacy fields for compatibility
-        guestOs: encryptedData.guestOs || encryptedData.vmOs,
-        powerState: encryptedData.powerState || encryptedData.vmStatus || 'stopped',
-        cpuCount: encryptedData.cpuCount,
-        memoryMB: encryptedData.memoryMB,
-        diskGB: encryptedData.diskGB,
-        ipAddress: encryptedData.ipAddress || encryptedData.vmIp,
-        macAddress: encryptedData.macAddress,
-        vmwareTools: encryptedData.vmwareTools,
-        cluster: encryptedData.cluster,
-        datastore: encryptedData.datastore,
-        status: encryptedData.status || 'available',
-        assignedTo: encryptedData.assignedTo,
-        location: encryptedData.location,
-        serialNumber: encryptedData.serialNumber,
-        model: encryptedData.model,
-        manufacturer: encryptedData.manufacturer,
-        purchaseDate: encryptedData.purchaseDate,
-        purchaseCost: encryptedData.purchaseCost,
-        createdDate: encryptedData.createdDate || new Date().toISOString(),
-        lastModified: encryptedData.lastModified || new Date().toISOString(),
-        notes: encryptedData.notes
-      }).returning();
-
-      // Decrypt for return
-      const decryptedVM = decryptFields(newVM, PII_FIELDS.vmInventory);
-
-      // Create activity record
-      await this.createActivity({
-        action: "create",
-        itemType: "vm",
-        itemId: newVM.id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `VM "${decryptedVM.vmName}" created`,
-      });
-
-      return decryptedVM;
-    } catch (error) {
-      console.error('Error creating VM inventory item:', error);
-      throw error;
-    }
-  }
-
-  async updateVmInventoryItem(id: number, vm: any): Promise<any> {
-    try {
-      const [existingVM] = await db.select().from(schema.vmInventory).where(eq(schema.vmInventory.id, id));
-      if (!existingVM) return undefined;
-
-      const updateData: any = {
-        lastModified: new Date().toISOString()
-      };
-
-      // Map new VM inventory fields
-      if (vm.startDate !== undefined) updateData.startDate = vm.startDate;
-      if (vm.endDate !== undefined) updateData.endDate = vm.endDate;
-      if (vm.hypervisor) updateData.hypervisor = vm.hypervisor;
-      if (vm.hostName) updateData.hostName = vm.hostName;
-      if (vm.hostModel) updateData.hostModel = vm.hostModel;
-      if (vm.hostIp) updateData.hostIp = vm.hostIp;
-      if (vm.hostOs) updateData.hostOs = vm.hostOs;
-      if (vm.rack) updateData.rack = vm.rack;
-      if (vm.vmId) updateData.vmId = vm.vmId;
-      if (vm.vmName) updateData.vmName = vm.vmName;
-      if (vm.vmStatus) updateData.vmStatus = vm.vmStatus;
-      if (vm.vmIp !== undefined) updateData.vmIp = vm.vmIp;
-      if (vm.internetAccess !== undefined) updateData.internetAccess = vm.internetAccess;
-      if (vm.vmOs) updateData.vmOs = vm.vmOs;
-      if (vm.vmOsVersion) updateData.vmOsVersion = vm.vmOsVersion;
-      if (vm.deployedBy) updateData.deployedBy = vm.deployedBy;
-      if (vm.user) updateData.user = vm.user;
-      if (vm.department) updateData.department = vm.department;
-      if (vm.jiraTicket) updateData.jiraTicket = vm.jiraTicket;
-      if (vm.remarks !== undefined) updateData.remarks = vm.remarks;
-      if (vm.dateDeleted) updateData.dateDeleted = vm.dateDeleted;
-      if (vm.requestor !== undefined) updateData.requestor = vm.requestor;
-      if (vm.knoxId !== undefined) updateData.knoxId = vm.knoxId;
-      if (vm.jiraNumber !== undefined) updateData.jiraNumber = vm.jiraNumber;
-      if (vm.approvalNumber !== undefined) updateData.approvalNumber = vm.approvalNumber;
-      if (vm.cpuCount !== undefined) updateData.cpuCount = vm.cpuCount;
-      if (vm.memoryGB !== undefined) updateData.memoryGB = vm.memoryGB;
-      if (vm.diskCapacityGB !== undefined) updateData.diskCapacityGB = vm.diskCapacityGB;
-
-      // Legacy fields for compatibility
-      if (vm.guestOs) updateData.guestOs = vm.guestOs;
-      if (vm.powerState) updateData.powerState = vm.powerState;
-      if (vm.memoryMB) updateData.memoryMB = vm.memoryMB;
-      if (vm.diskGB) updateData.diskGB = vm.diskGB;
-      if (vm.ipAddress !== undefined) updateData.ipAddress = vm.ipAddress;
-      if (vm.macAddress !== undefined) updateData.macAddress = vm.macAddress;
-      if (vm.vmwareTools) updateData.vmwareTools = vm.vmwareTools;
-      if (vm.cluster) updateData.cluster = vm.cluster;
-      if (vm.datastore) updateData.datastore = vm.datastore;
-      if (vm.status) updateData.status = vm.status;
-      if (vm.assignedTo) updateData.assignedTo = vm.assignedTo;
-      if (vm.location) updateData.location = vm.location;
-      if (vm.serialNumber) updateData.serialNumber = vm.serialNumber;
-      if (vm.model) updateData.model = vm.model;
-      if (vm.manufacturer) updateData.manufacturer = vm.manufacturer;
-      if (vm.purchaseDate) updateData.purchaseDate = vm.purchaseDate;
-      if (vm.purchaseCost) updateData.purchaseCost = vm.purchaseCost;
-      if (vm.notes) updateData.notes = vm.notes;
-
-      // Encrypt PII fields before updating
-      const encryptedUpdateData = encryptFields(updateData, PII_FIELDS.vmInventory);
-
-      const [updatedVM] = await db.update(schema.vmInventory)
-        .set(encryptedUpdateData)
-        .where(eq(schema.vmInventory.id, id))
-        .returning();
-
-      // IMPORTANT: Always decrypt the full record before returning to client
-      // This ensures encrypted data in the database is shown as plain text in the UI
-      const decryptedVM = updatedVM ? decryptFields(updatedVM, PII_FIELDS.vmInventory) : undefined;
-
-      // Create activity record
-      await this.createActivity({
-        action: "update",
-        itemType: "vm",
-        itemId: id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `VM "${decryptedVM?.vmName}" updated`,
-      });
-
-      return decryptedVM;
-    } catch (error) {
-      console.error('Error updating VM inventory item:', error);
-      throw error;
-    }
-  }
-
-  async deleteVmInventoryItem(id: number): Promise<boolean> {
-    try {
-      console.log(`Deleting VM with ID: ${id} from PostgreSQL database...`);
-
-      // Get VM info before deletion
-      const [vmToDelete] = await db.select().from(schema.vmInventory).where(eq(schema.vmInventory.id, id));
-      if (!vmToDelete) {
-        console.log(`VM ${id} not found`);
-        return false;
-      }
-
-      console.log(`Deleting VM: ${vmToDelete.vmName}`);
-
-      const deleteResult = await db.delete(schema.vmInventory).where(eq(schema.vmInventory.id, id));
-
-      console.log(`Delete result for VM ${id}:`, deleteResult);
-
-      if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-        // Create activity record
-        try {
-          await this.createActivity({
-            action: "delete",
-            itemType: "vm",
-            itemId: id,
-            userId: null,
-            timestamp: new Date().toISOString(),
-            notes: `VM "${vmToDelete.vmName}" deleted`,
-          });
-        } catch (activityError) {
-          console.warn("Failed to log VM delete activity:", activityError);
-        }
-
-        console.log(`VM ${vmToDelete.vmName} deleted successfully from PostgreSQL database`);
-        return true;
-      }
-
-      console.log(`No rows affected when deleting VM ${id}`);
-      return false;
-    } catch (error) {
-      console.error('Error deleting VM from PostgreSQL database:', error);
-      return false;
-    }
-  }
-
-  // IT Equipment operations
-  async getITEquipment(): Promise<ITEquipment[]> {
-    try {
-      const equipment = await db.select().from(itEquipment);
-      // Batch decrypt PII for all equipment
-      const { batchDecryptFields } = await import("./encryption");
-      return batchDecryptFields(equipment, PII_FIELDS.itEquipment);
-    } catch (error) {
-      console.error('Database error fetching IT equipment:', error);
-      return [];
-    }
-  }
-
-  async getITEquipmentById(id: number): Promise<ITEquipment | null> {
-    const [equipment] = await db.select().from(itEquipment).where(eq(itEquipment.id, id));
-    return equipment ? decryptFields(equipment, PII_FIELDS.itEquipment) : null;
-  }
-
-  async createITEquipment(data: InsertITEquipment): Promise<ITEquipment> {
-    try {
-      // Encrypt PII fields
-      const encryptedData = encryptFields(data, PII_FIELDS.itEquipment);
-
-      const [equipment] = await db.insert(itEquipment).values({
-        ...encryptedData,
-        assignedQuantity: 0,
-        status: encryptedData.status || 'available',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }).returning();
-
-      // Decrypt for return
-      const decryptedEquipment = decryptFields(equipment, PII_FIELDS.itEquipment);
-
-      // Create activity record
-      await this.createActivity({
-        action: "create",
-        itemType: "it-equipment",
-        itemId: equipment.id,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `IT Equipment "${decryptedEquipment.name}" created`,
-      });
-
-      return decryptedEquipment;
-    } catch (error) {
-      console.error('Database error creating IT equipment:', error);
-      throw error;
-    }
-  }
-
-  async updateITEquipment(id: number, data: Partial<InsertITEquipment>): Promise<ITEquipment | null> {
-    try {
-      // Encrypt PII fields before updating
-      const encryptedData = encryptFields(data, PII_FIELDS.itEquipment);
-
-      const [equipment] = await db.update(itEquipment)
-        .set({
-          ...encryptedData,
-          updatedAt: new Date().toISOString()
-        })
-        .where(eq(itEquipment.id, id))
-        .returning();
-
-      if (equipment) {
-        // Decrypt for return and activity
-        const decryptedEquipment = decryptFields(equipment, PII_FIELDS.itEquipment);
-
-        // Create activity record
-        await this.createActivity({
-          action: "update",
-          itemType: "it-equipment",
-          itemId: id,
-          userId: null,
-          timestamp: new Date().toISOString(),
-          notes: `IT Equipment "${decryptedEquipment.name}" updated`,
-        });
-
-        return decryptedEquipment;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Database error updating IT equipment:', error);
-      throw error;
-    }
-  }
-
-  async deleteITEquipment(id: number): Promise<boolean> {
-    try {
-      const [equipment] = await db.select().from(itEquipment).where(eq(itEquipment.id, id));
-      if (!equipment) return false;
-
-      // Delete related assignments first
-      await db.delete(itEquipmentAssignments).where(eq(itEquipmentAssignments.equipmentId, id));
-
-      // Delete the equipment
-      const result = await db.delete(itEquipment).where(eq(itEquipment.id, id));
-
-      if (result.rowCount && result.rowCount > 0) {
-        // Create activity record
-        await this.createActivity({
-          action: "delete",
-          itemType: "it-equipment",
-          itemId: id,
-          userId: null,
-          timestamp: new Date().toISOString(),
-          notes: `IT Equipment "${equipment.name}" deleted`,
-        });
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      console.error('Database error deleting IT equipment:', error);
-      return false;
-    }
-  }
-
-  // IT Equipment Assignment methods
-  async getITEquipmentAssignments(equipmentId: number): Promise<any[]> {
-    try {
-      return await db.select()
-        .from(itEquipmentAssignments)
-        .where(eq(itEquipmentAssignments.equipmentId, equipmentId))
-        .orderBy(desc(itEquipmentAssignments.assignedDate));
-    } catch (error) {
-      console.error('Database error fetching IT equipment assignments:', error);
-      return [];
-    }
-  }
-
-  async assignITEquipment(equipmentId: number, assignmentData: any): Promise<any> {
-    try {
-      // Create assignment
-      const [assignment] = await db.insert(itEquipmentAssignments).values({
-        equipmentId,
-        assignedTo: assignmentData.assignedTo,
-        serialNumber: assignmentData.serialNumber || null,
-        knoxId: assignmentData.knoxId || null,
-        quantity: assignmentData.quantity || 1,
-        assignedDate: new Date().toISOString(),
-        status: 'assigned',
-        notes: assignmentData.notes || null
-      }).returning();
-
-      // Update equipment assigned quantity
-      await db.update(itEquipment)
-        .set({
-          assignedQuantity: sql`${itEquipment.assignedQuantity} + ${assignmentData.quantity || 1}`,
-          updatedAt: new Date().toISOString()
-        })
-        .where(eq(itEquipment.id, equipmentId));
-
-      // Create activity record
-      await this.createActivity({
-        action: "checkout",
-        itemType: "it-equipment",
-        itemId: equipmentId,
-        userId: null,
-        timestamp: new Date().toISOString(),
-        notes: `IT Equipment assigned to ${assignmentData.assignedTo} (Qty: ${assignmentData.quantity || 1})`,
-      });
-
-      return assignment;
-    } catch (error) {
-      console.error('Database error assigning IT equipment:', error);
-      throw error;
-    }
-  }
-
-  async bulkAssignITEquipment(equipmentId: number, assignments: any[]): Promise<any[]> {
-    try {
-      const createdAssignments = [];
-
-      for (const assignmentData of assignments) {
-        const assignment = await this.assignITEquipment(equipmentId, assignmentData);
-        createdAssignments.push(assignment);
-      }
-
-      return createdAssignments;
-    } catch (error) {
-      console.error('Database error in bulk assignment:', error);
-      throw error;
-    }
-  }
-
-  async updateSettings(settings: any): Promise<void> {
-    try {
-      await db.execute(sql`
-        INSERT INTO system_settings (id, site_name, company_name, created_at, updated_at) 
-        VALUES (1, ${settings.siteName || 'SRPH-MIS'}, ${settings.companyName || 'SRPH'}, datetime('now'), datetime('now'))
-        ON CONFLICT(id) DO UPDATE SET 
-          site_name = excluded.site_name,
-          company_name = excluded.company_name,
-          updated_at = datetime('now')
-      `);
-    } catch (error) {
-      console.error('Error updating settings:', error);
-      throw error;
-    }
-  }
-
-  async getJiraSettings(): Promise<any> {
-    try {
-      // Test database connection
-      await db.execute(sql`SELECT 1`);
-
-      // Create table if it doesn't exist
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS jira_settings (
-          id SERIAL PRIMARY KEY,
-          settings TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      const result = await db.execute(sql`SELECT settings FROM jira_settings WHERE id = 1`);
-
-      if (result.rows && result.rows.length > 0) {
-        try {
-          const settings = JSON.parse(result.rows[0].settings as string);
-          console.log('JIRA settings retrieved from database');
-          return settings;
-        } catch (parseError) {
-          console.error('Error parsing JIRA settings JSON:', parseError);
-          return null;
-        }
-      }
-
-      console.log('No JIRA settings found in database');
-      return null;
-    } catch (error) {
-      console.error('Error fetching JIRA settings:', error);
-      throw new Error(`Failed to fetch JIRA settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async saveJiraSettings(settings: any): Promise<any> {
-    try {
-      // Test database connection
-      await db.execute(sql`SELECT 1`);
-
-      // Create jira_settings table if it doesn't exist (PostgreSQL syntax)
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS jira_settings (
-          id SERIAL PRIMARY KEY,
-          settings TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      const settingsJson = JSON.stringify(settings);
-
-      // Use PostgreSQL upsert syntax (INSERT ... ON CONFLICT)
-      await db.execute(sql`
-        INSERT INTO jira_settings (id, settings, updated_at) 
-        VALUES (1, ${settingsJson}, CURRENT_TIMESTAMP)
-        ON CONFLICT (id) DO UPDATE SET 
-          settings = EXCLUDED.settings,
-          updated_at = CURRENT_TIMESTAMP
-      `);
-
-      console.log('JIRA settings saved successfully to database');
-
-      // Return the saved settings
-      return settings;
-    } catch (error) {
-      console.error('Error saving JIRA settings:', error);
-      throw new Error(`Failed to save JIRA settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async createIssue(issue: any): Promise<any> {
-    // For now, store as activity - in real implementation, create issues table
-    const activity = {
-      id: Date.now(),
-      type: 'issue_reported',
-      description: `Issue reported: ${issue.title}`,
-      userId: 1,
-      assetId: null,
-      metadata: JSON.stringify(issue),
-      timestamp: new Date()
-    };
-
-    // Assuming 'this.db' is correctly initialized and available.
-    // If 'db' is imported directly at the top level, use 'db' directly.
-    // Adjust based on how 'db' is accessed within the class context.
-    // For this example, assuming 'db' is accessible as 'this.db' or globally.
-    if (this.db) {
-      await this.db.insert(activities).values(activity);
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedEquipment(equipment.map((item) => String(item.id)));
     } else {
-      // Fallback or throw error if db is not available
-      console.error("Database connection not available for createIssue");
-      throw new Error("Database connection required");
+      setSelectedEquipment([]);
     }
-    return issue;
-  }
+  };
 
-  async getIssues(): Promise<any[]> {
-    // Retrieve from activities table for now
-    if (this.db) {
-      const result = await this.db.select().from(activities).where(eq(activities.type, 'issue_reported'));
-      return result.map(activity => {
-        try {
-          return JSON.parse(activity.metadata || '{}');
-        } catch {
-          return {};
-        }
-      });
-    } else {
-      console.error("Database connection not available for getIssues");
-      return [];
-    }
-  }
+  // Filter and paginate equipment
+  const filteredEquipment = useMemo(() => {
+    if (!equipment) return [];
+    
+    return equipment.filter((item) => {
+      const searchLower = searchQuery.toLowerCase();
+      return (
+        item.name?.toLowerCase().includes(searchLower) ||
+        item.category?.toLowerCase().includes(searchLower) ||
+        item.model?.toLowerCase().includes(searchLower) ||
+        item.location?.toLowerCase().includes(searchLower) ||
+        item.knoxId?.toLowerCase().includes(searchLower) ||
+        item.serialNumber?.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [equipment, searchQuery]);
 
-  // IAM Accounts methods
-  async getIamAccounts(): Promise<IamAccount[]> {
-    try {
-      if (!db) {
-        console.error('Database connection not available for IAM accounts');
-        throw new Error('Database connection required for IAM accounts');
+  const totalPages = Math.ceil(filteredEquipment.length / itemsPerPage);
+  const paginatedEquipment = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredEquipment.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredEquipment, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
+
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        name: "Sample Laptop",
+        category: "Laptop",
+        totalQuantity: "10",
+        model: "ThinkPad X1 Carbon",
+        location: "Head Office - Room 201",
+        dateAcquired: "2023-01-15",
+        knoxId: "KNOX001",
+        serialNumber: "SN123456789",
+        dateRelease: "",
+        remarks: "High-performance laptop for development work",
+        status: "available",
+        assignedTo: "John Doe",
+        assignedQuantity: "1",
+        assignedDate: "2023-01-20",
+        assignmentKnoxId: "KNOX-JD-001",
+        assignmentSerialNumber: "SN123456789-JD",
+        assignmentNotes: "For development tasks"
+      },
+      {
+        name: "Sample Desktop",
+        category: "Desktop",
+        totalQuantity: "5",
+        model: "OptiPlex 7090",
+        location: "Branch Office - Floor 3",
+        dateAcquired: "2023-02-10",
+        knoxId: "KNOX002",
+        serialNumber: "SN987654321",
+        dateRelease: "",
+        remarks: "Desktop computer for office productivity",
+        status: "available",
+        assignedTo: "Jane Smith",
+        assignedQuantity: "1",
+        assignedDate: "2023-02-15",
+        assignmentKnoxId: "KNOX-JS-002",
+        assignmentSerialNumber: "SN987654321-JS",
+        assignmentNotes: "For general office use"
       }
+    ];
 
-      console.log('Fetching IAM accounts from database...');
+    const csvContent = [
+      "name,category,totalQuantity,model,location,dateAcquired,knoxId,serialNumber,dateRelease,remarks,status,assignedTo,assignedQuantity,assignedDate,assignmentKnoxId,assignmentSerialNumber,assignmentNotes",
+      ...templateData.map(row => 
+        `"${row.name}",${row.category},${row.totalQuantity},"${row.model}","${row.location}",${row.dateAcquired},${row.knoxId},${row.serialNumber},${row.dateRelease},"${row.remarks}",${row.status},"${row.assignedTo}","${row.assignedQuantity}","${row.assignedDate}","${row.assignmentKnoxId}","${row.assignmentSerialNumber}","${row.assignmentNotes}"`
+      )
+    ].join('\n');
 
-      // Test database connection
-      await db.execute(sql`SELECT 1`);
-
-      const accounts = await db.select().from(iamAccounts).orderBy(desc(iamAccounts.id));
-
-      console.log(`Database query returned ${accounts.length} IAM accounts`);
-
-      // Decrypt and map database fields to match the expected interface
-      const mappedAccounts = accounts.map(account => {
-        console.log('Processing account:', account);
-        const decryptedAccount = decryptFields(account, PII_FIELDS.iamAccount);
-        return {
-          id: decryptedAccount.id,
-          requestor: decryptedAccount.requestor,
-          knoxId: decryptedAccount.knoxId,
-          permission: decryptedAccount.permission,
-          durationStartDate: decryptedAccount.durationStartDate,
-          durationEndDate: decryptedAccount.durationEndDate,
-          cloudPlatform: decryptedAccount.cloudPlatform,
-          projectAccounts: decryptedAccount.projectAccounts,
-          approvalId: decryptedAccount.approvalId,
-          remarks: decryptedAccount.remarks,
-          status: decryptedAccount.status,
-          createdAt: decryptedAccount.createdAt?.toISOString() || new Date().toISOString(),
-          updatedAt: decryptedAccount.updatedAt?.toISOString() || new Date().toISOString()
-        };
-      });
-
-      console.log(`Mapped ${mappedAccounts.length} IAM accounts successfully`);
-      return mappedAccounts;
-    } catch (error) {
-      console.error('Error in getIamAccounts:', error);
-      throw error;
-    }
-  }
-
-  async getIamAccount(id: number): Promise<IamAccount | undefined> {
-    const [account] = await db.select().from(iamAccounts).where(eq(iamAccounts.id, id));
-    if (!account) return undefined;
-
-    // Decrypt and map database fields to match the expected interface
-    const decryptedAccount = decryptFields(account, PII_FIELDS.iamAccount);
-
-    return {
-      id: decryptedAccount.id,
-      requestor: decryptedAccount.requestor,
-      knoxId: decryptedAccount.knoxId,
-      permission: decryptedAccount.permission,
-      durationStartDate: decryptedAccount.durationStartDate,
-      durationEndDate: decryptedAccount.durationEndDate,
-      cloudPlatform: decryptedAccount.cloudPlatform,
-      projectAccounts: decryptedAccount.projectAccounts,
-      approvalId: decryptedAccount.approvalId,
-      remarks: decryptedAccount.remarks,
-      status: decryptedAccount.status,
-      createdAt: decryptedAccount.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: decryptedAccount.updatedAt?.toISOString() || new Date().toISOString()
-    };
-  }
-
-  async createIamAccount(data: Omit<IamAccount, 'id' | 'createdAt' | 'updatedAt'>): Promise<IamAccount> {
-    if (!db) {
-      throw new Error('Database connection required for IAM accounts');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'it-equipment-import-template.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
 
-    const newAccount: Omit<IamAccount, 'id' | 'createdAt' | 'updatedAt'> = {
-      requestor: data.requestor,
-      knoxId: data.knoxId,
-      permission: data.permission,
-      durationStartDate: data.durationStartDate || null,
-      durationEndDate: data.durationEndDate || null,
-      cloudPlatform: data.cloudPlatform,
-      projectAccounts: data.projectAccounts || null,
-      approvalId: data.approvalId || null,
-      remarks: data.remarks || null,
-      status: data.status
-    };
+    toast({
+      title: "Template Downloaded",
+      description: "IT Equipment import template has been downloaded successfully."
+    });
+  };
 
-    // Encrypt PII fields before inserting
-    const encryptedData = encryptFields(newAccount, PII_FIELDS.iamAccount);
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-800">IT Equipment</h1>
+          <p className="text-sm text-gray-600">Manage IT equipment inventory and assignments</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleExportCSV}>
+            <DownloadIcon className="mr-2 h-4 w-4" />
+            Export to CSV
+          </Button>
+          <Button variant="outline" onClick={handleDownloadTemplate}>
+            <FileDownIcon className="mr-2 h-4 w-4" />
+            Download Template
+          </Button>
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <UploadIcon className="mr-2 h-4 w-4" />
+                Import CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[95%] max-w-6xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Import IT Equipment from CSV</DialogTitle>
+                <DialogDescription>
+                  Upload a CSV file to bulk import IT equipment data
+                </DialogDescription>
+              </DialogHeader>
+              <ITEquipmentCSVImport onImportComplete={() => setIsImportDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <PlusIcon className="mr-2 h-4 w-4" />
+                Add Equipment
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[95%] max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add IT Equipment</DialogTitle>
+                <DialogDescription>
+                  Enter the details for the IT equipment
+                </DialogDescription>
+              </DialogHeader>
+              <ITEquipmentForm 
+                onSubmit={handleEquipmentSubmit} 
+                isLoading={createMutation.isPending} 
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
 
-    // PostgreSQL timestamp columns accept ISO string format directly
-    const now = new Date();
-    const [account] = await db.insert(iamAccounts).values({
-      ...encryptedData,
-      createdAt: now,
-      updatedAt: now
-    }).returning();
+      <Card>
+        <CardHeader>
+          <CardTitle>IT Equipment Management</CardTitle>
+          <CardDescription>Track and manage IT equipment inventory and assignments</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by name, category, model, location, Knox ID, or serial number..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {searchQuery && (
+              <p className="text-sm text-gray-600 mt-2">
+                Found {filteredEquipment.length} result{filteredEquipment.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
 
-    // Decrypt before returning to client
-    const decryptedAccount = decryptFields(account, PII_FIELDS.iamAccount);
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+            </div>
+          ) : equipment && equipment.length > 0 ? (
+            <>
+              <div className="space-y-4">
+                {/* Select All and Bulk Actions */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={selectedEquipment.length === filteredEquipment.length && filteredEquipment.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                    <span className="text-sm font-medium">
+                      {selectedEquipment.length > 0 
+                        ? `${selectedEquipment.length} selected` 
+                        : 'Select All'}
+                    </span>
+                  </div>
+                  <Button variant="destructive" size="sm" disabled={selectedEquipment.length === 0}>
+                    <TrashIcon className="h-4 w-4 mr-2" />
+                    Delete Selected ({selectedEquipment.length})
+                  </Button>
+                </div>
 
-    return decryptedAccount;
-  }
+                {/* Equipment Grid */}
+                {paginatedEquipment.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {paginatedEquipment.map((item) => {
+                      const totalQuantity = item.totalQuantity || 0;
+                      const assignedQuantity = item.assignedQuantity || 0;
+                      const availableQuantity = totalQuantity - assignedQuantity;
+                      const isAvailable = availableQuantity > 0;
+                      const usagePercentage = totalQuantity > 0 ? (assignedQuantity / totalQuantity) * 100 : 0;
 
-  async updateIamAccount(id: number, data: Partial<IamAccount>): Promise<IamAccount | undefined> {
-    if (!db) {
-      throw new Error('Database connection required for IAM accounts');
-    }
+                      return (
+                        <Card key={item.id} className="hover:shadow-lg transition-all duration-200 overflow-hidden">
+                          <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                {isAvailable && (
+                                  <Switch 
+                                    id={`equipment-${item.id}`}
+                                    checked={selectedEquipment.includes(item.id)}
+                                    onCheckedChange={(checked) => handleSelectEquipment(item.id, checked)}
+                                  />
+                                )}
+                                <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <MonitorIcon className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                  <CardTitle className="text-lg">{item.name}</CardTitle>
+                                  <CardDescription className="text-xs">{item.category}</CardDescription>
+                                </div>
+                              </div>
+                              <Badge 
+                                className={availableQuantity > 0 
+                                  ? 'bg-green-500 text-white' 
+                                  : 'bg-red-500 text-white'}
+                              >
+                                {availableQuantity > 0 ? 'Available' : 'Full'}
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pt-4 space-y-3">
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <p className="text-gray-500 text-xs">Model</p>
+                                <p className="font-medium truncate">{item.model || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 text-xs">Location</p>
+                                <p className="font-medium truncate">{item.location || 'N/A'}</p>
+                              </div>
+                            </div>
 
-    const updateData: Partial<IamAccount> = {
-      requestor: data.requestor,
-      knoxId: data.knoxId,
-      permission: data.permission,
-      durationStartDate: data.durationStartDate || null,
-      durationEndDate: data.durationEndDate || null,
-      cloudPlatform: data.cloudPlatform,
-      projectAccounts: data.projectAccounts || null,
-      approvalId: data.approvalId || null,
-      remarks: data.remarks || null,
-      status: data.status
-    };
+                            <Separator />
 
-    // Encrypt PII fields before updating
-    const encryptedData = encryptFields(updateData, PII_FIELDS.iamAccount);
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-xs text-gray-600">
+                                <span>Usage</span>
+                                <span className="font-medium">{assignedQuantity} / {totalQuantity}</span>
+                              </div>
+                              <Progress value={usagePercentage} className="h-2" />
+                              <div className="flex justify-between text-xs">
+                                <span className="text-green-600 font-medium">{availableQuantity} available</span>
+                                {item.dateAcquired && (
+                                  <span className="text-gray-500">
+                                    <CalendarIcon className="h-3 w-3 inline mr-1" />
+                                    {formatDate(item.dateAcquired)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
 
-    const [updatedAccount] = await db
-      .update(iamAccounts)
-      .set({
-        ...encryptedData,
-        updatedAt: new Date()
-      })
-      .where(eq(iamAccounts.id, id))
-      .returning();
+                            <div className="flex gap-2 pt-2">
+                              <Link href={`/it-equipment/${item.id}`} className="flex-1">
+                                <Button variant="outline" size="sm" className="w-full">
+                                  Details
+                                </Button>
+                              </Link>
+                              <Button 
+                                size="sm"
+                                className="flex-1 bg-green-600 hover:bg-green-700"
+                                onClick={() => handleAssignEquipment(item)}
+                                disabled={availableQuantity <= 0}
+                              >
+                                Assign
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="text-center py-10">
+                      <MonitorIcon className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-500">No equipment found matching your search.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
 
-    if (!updatedAccount) return undefined;
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-6 flex justify-center">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                      
+                      {[...Array(totalPages)].map((_, index) => {
+                        const pageNumber = index + 1;
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          pageNumber === 1 ||
+                          pageNumber === totalPages ||
+                          (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1)
+                        ) {
+                          return (
+                            <PaginationItem key={pageNumber}>
+                              <PaginationLink
+                                onClick={() => setCurrentPage(pageNumber)}
+                                isActive={currentPage === pageNumber}
+                                className="cursor-pointer"
+                              >
+                                {pageNumber}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        } else if (
+                          pageNumber === currentPage - 2 ||
+                          pageNumber === currentPage + 2
+                        ) {
+                          return (
+                            <PaginationItem key={pageNumber}>
+                              <span className="px-4">...</span>
+                            </PaginationItem>
+                          );
+                        }
+                        return null;
+                      })}
 
-    // Decrypt and return properly mapped account data
-    const decryptedAccount = decryptFields(updatedAccount, PII_FIELDS.iamAccount);
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-10">
+              <CheckCircleIcon className="h-16 w-16 mx-auto text-green-500 mb-4" />
+              <h3 className="text-lg font-medium mb-2">IT Equipment Management Ready</h3>
+              <p className="text-gray-500 mb-4">
+                Click the "Add Equipment" button above to start tracking your IT equipment.
+              </p>
+              <div className="flex justify-center">
+                <Link href="/">
+                  <Button variant="outline">Return to Dashboard</Button>
+                </Link>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-    return {
-      id: decryptedAccount.id,
-      requestor: decryptedAccount.requestor,
-      knoxId: decryptedAccount.knoxId,
-      permission: decryptedAccount.permission,
-      durationStartDate: decryptedAccount.durationStartDate,
-      durationEndDate: decryptedAccount.durationEndDate,
-      cloudPlatform: decryptedAccount.cloudPlatform,
-      projectAccounts: decryptedAccount.projectAccounts,
-      approvalId: decryptedAccount.approvalId,
-      remarks: decryptedAccount.remarks,
-      status: decryptedAccount.status,
-      createdAt: decryptedAccount.createdAt?.toISOString() || new Date().toISOString(),
-      updatedAt: decryptedAccount.updatedAt?.toISOString() || new Date().toISOString()
-    };
-  }
-
-  async deleteIamAccount(id: number): Promise<boolean> {
-    if (!db) {
-      throw new Error('Database connection required for IAM accounts');
-    }
-    const result = await db.delete(iamAccounts).where(eq(iamAccounts.id, id));
-    return result.rowCount > 0;
-  }
-
-  async importIamAccounts(accounts: Partial<IamAccount>[]): Promise<{ success: number; failed: number; errors: string[] }> {
-    if (!db) {
-      throw new Error('Database connection required for IAM accounts');
-    }
-    const results = { success: 0, failed: 0, errors: [] as string[] };
-
-    for (const account of accounts) {
-      try {
-        await this.createIamAccount(account as Omit<IamAccount, 'id' | 'createdAt' | 'updatedAt'>); // Cast to ensure type compatibility
-        results.success++;
-      } catch (error: any) {
-        results.failed++;
-        results.errors.push(`Row ${results.success + results.failed}: ${error.message}`);
-      }
-    }
-
-    return results;
-  }
+      {/* Assignment Dialog */}
+      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Equipment</DialogTitle>
+            <DialogDescription>
+              Assign {selectedForAssignment?.name} to a user
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="assignedTo" className="text-sm font-medium">Assigned To *</label>
+              <Input
+                id="assignedTo"
+                value={assignmentData.assignedTo}
+                onChange={(e) => setAssignmentData({...assignmentData, assignedTo: e.target.value})}
+                placeholder="Enter name or Knox ID"
+              />
+            </div>
+            <div>
+              <label htmlFor="quantity" className="text-sm font-medium">Quantity *</label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                max={(selectedForAssignment?.totalQuantity || 0) - (selectedForAssignment?.assignedQuantity || 0)}
+                value={assignmentData.quantity}
+                onChange={(e) => setAssignmentData({...assignmentData, quantity: parseInt(e.target.value) || 1})}
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Available: {(selectedForAssignment?.totalQuantity || 0) - (selectedForAssignment?.assignedQuantity || 0)}
+              </p>
+            </div>
+            <div>
+              <label htmlFor="knoxId" className="text-sm font-medium">Knox ID</label>
+              <Input
+                id="knoxId"
+                value={assignmentData.knoxId}
+                onChange={(e) => setAssignmentData({...assignmentData, knoxId: e.target.value})}
+                placeholder="Enter Knox ID"
+              />
+            </div>
+            <div>
+              <label htmlFor="serialNumber" className="text-sm font-medium">Serial Number</label>
+              <Input
+                id="serialNumber"
+                value={assignmentData.serialNumber}
+                onChange={(e) => setAssignmentData({...assignmentData, serialNumber: e.target.value})}
+                placeholder="Enter serial number"
+              />
+            </div>
+            <div>
+              <label htmlFor="notes" className="text-sm font-medium">Notes</label>
+              <Textarea
+                id="notes"
+                value={assignmentData.notes}
+                onChange={(e) => setAssignmentData({...assignmentData, notes: e.target.value})}
+                placeholder="Additional notes (optional)"
+                rows={3}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsAssignDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignmentSubmit}
+              disabled={assignmentMutation.isPending || !assignmentData.assignedTo.trim()}
+            >
+              {assignmentMutation.isPending ? 'Assigning...' : 'Assign'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
-
-// Removed duplicate initializeDatabase function - using the one from the DatabaseStorage class above
