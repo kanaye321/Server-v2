@@ -1730,11 +1730,12 @@ export class DatabaseStorage implements IStorage {
     // Encrypt PII fields before inserting
     const encryptedData = encryptFields(newAccount, PII_FIELDS.iamAccount);
 
-    // Add timestamps as ISO strings for PostgreSQL timestamp columns
+    // PostgreSQL timestamp columns accept ISO string format directly
+    const now = new Date();
     const [account] = await db.insert(iamAccounts).values({
       ...encryptedData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     }).returning();
 
     // Decrypt before returning to client
@@ -1768,7 +1769,7 @@ export class DatabaseStorage implements IStorage {
       .update(iamAccounts)
       .set({
         ...encryptedData,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date()
       })
       .where(eq(iamAccounts.id, id))
       .returning();
