@@ -1,29 +1,31 @@
+⚠️ Data appears to be unencrypted, returning as-is
+⚠️ Data appears to be unencrypted, returning as-is
 Deserializing user admin with admin status: true, roleId: null
 Admin permissions loaded for user admin
 ✅ ENCRYPTION ENABLED - Using configured ENCRYPTION_KEY
 Error creating IAM account: TypeError: value.toISOString is not a function
-    at PgTimestamp.mapToDriverValue (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\pg-core\columns\timestamp.ts:66:16)
-    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:223:69)
+    at PgTimestamp.mapToDriverValue (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\pg-core\columns\timestamp.ts:66:16)
+    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:223:69)
     at Array.map (<anonymous>)
-    at SQL.buildQueryFromSourceParams (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:148:30)
-    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:170:17)
+    at SQL.buildQueryFromSourceParams (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:148:30)
+    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:170:17)
     at Array.map (<anonymous>)
-    at SQL.buildQueryFromSourceParams (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:148:30)
-    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:174:17)
+    at SQL.buildQueryFromSourceParams (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:148:30)
+    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:174:17)
     at Array.map (<anonymous>)
-    at SQL.buildQueryFromSourceParams (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:148:30)
-    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:124:23)
-    at Object.startActiveSpan (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\tracing.ts:27:11)
-    at SQL.toQuery (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\sql\sql.ts:123:17)
-    at PgDialect.sqlToQuery (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\pg-core\dialect.ts:591:14)
-    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:405:19)
-    at Object.startActiveSpan (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\tracing.ts:27:11)
-    at QueryPromise._prepare (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:400:17)
-    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:422:16)
-    at Object.startActiveSpan (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\tracing.ts:27:11)
-    at QueryPromise.execute (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:421:17)
-    at QueryPromise.then (C:\Users\jimenez.n\Downloads\Server-v2 (21) (1)\Server-v2\node_modules\src\query-promise.ts:31:15)
-7:30:00 PM [express] POST /api/iam-accounts 500 in 59ms :: {"message":"Failed to create IAM account"}
+    at SQL.buildQueryFromSourceParams (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:148:30)
+    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:124:23)
+    at Object.startActiveSpan (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\tracing.ts:27:11)
+    at SQL.toQuery (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\sql\sql.ts:123:17)
+    at PgDialect.sqlToQuery (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\pg-core\dialect.ts:591:14)
+    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:405:19)
+    at Object.startActiveSpan (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\tracing.ts:27:11)
+    at QueryPromise._prepare (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:400:17)
+    at <anonymous> (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:422:16)
+    at Object.startActiveSpan (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\tracing.ts:27:11)
+    at QueryPromise.execute (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\pg-core\query-builders\insert.ts:421:17)
+    at QueryPromise.then (C:\Users\jimenez.n\Downloads\Server-v2 (22)\Server-v2\node_modules\src\query-promise.ts:31:15)
+7:47:19 PM [express] POST /api/iam-accounts 500 in 87ms :: {"message":"Failed to create IAM account"}
 ⚠️ Data appears to be unencrypted, returning as-is
 ⚠️ Data appears to be unencrypted, returning as-is
 ⚠️ Data appears to be unencrypted, returning as-is
