@@ -1,313 +1,469 @@
 
-import nodemailer from 'nodemailer';
-import { storage } from './storage';
-import { promises as fs } from 'fs';
-import { join } from 'path';
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Mail, Send, Settings, CheckCircle, AlertCircle, Loader2, RefreshCw, Clock, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-interface EmailOptions {
-  to: string;
-  subject: string;
-  html: string;
-  text?: string;
-}
+export default function EmailNotificationsPage() {
+  const { toast } = useToast();
+  const [isTesting, setIsTesting] = useState(false);
 
-interface EmailLog {
-  timestamp: string;
-  to: string;
-  subject: string;
-  status: 'success' | 'failed';
-  error?: string;
-  messageId?: string;
-}
-
-const EMAIL_LOGS_DIR = join(process.cwd(), 'LOGS');
-const EMAIL_LOG_FILE = 'email_notifications.log';
-
-async function ensureEmailLogsDirectory() {
-  try {
-    await fs.access(EMAIL_LOGS_DIR);
-  } catch {
-    await fs.mkdir(EMAIL_LOGS_DIR, { recursive: true });
-  }
-}
-
-async function logEmailEvent(log: EmailLog) {
-  await ensureEmailLogsDirectory();
-  const filepath = join(EMAIL_LOGS_DIR, EMAIL_LOG_FILE);
-  const logEntry = `[${log.timestamp}] [${log.status.toUpperCase()}] To: ${log.to} | Subject: ${log.subject}${log.messageId ? ` | MessageID: ${log.messageId}` : ''}${log.error ? ` | Error: ${log.error}` : ''}\n`;
-  await fs.appendFile(filepath, logEntry);
-}
-
-class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
-
-  async initialize() {
-    try {
-      const settings = await storage.getSystemSettings();
-      
-      if (!settings?.mailHost || !settings?.mailFromAddress) {
-        console.log('Email not configured - skipping email service initialization');
-        return false;
-      }
-
-      this.transporter = nodemailer.createTransport({
-        host: settings.mailHost,
-        port: parseInt(settings.mailPort || '587'),
-        secure: settings.mailPort === '465',
-        auth: {
-          user: settings.mailUsername || settings.mailFromAddress,
-          pass: settings.mailPassword || ''
-        }
-      });
-
-      // Verify connection
-      await this.transporter.verify();
-      console.log('✅ Email service initialized successfully');
-      return true;
-    } catch (error) {
-      console.error('Failed to initialize email service:', error);
-      this.transporter = null;
-      return false;
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ['/api/settings'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/settings');
+      const data = await response.json();
+      console.log('Loaded email settings:', data);
+      return data;
     }
+  });
+
+  const { data: emailLogs, refetch: refetchLogs } = useQuery({
+    queryKey: ['/api/email-logs'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/email-logs');
+      return response.json();
+    },
+    refetchInterval: 30000 // Refetch every 30 seconds
+  });
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest('POST', '/api/settings', data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      toast({
+        title: "Settings saved",
+        description: "Email notification settings have been updated successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to save email settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const testEmailMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/test-email');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Test email sent",
+        description: data.message || "Check your inbox for the test email.",
+      });
+      setIsTesting(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Test email failed",
+        description: error.message || "Could not send test email. Please check your configuration.",
+        variant: "destructive",
+      });
+      setIsTesting(false);
+    }
+  });
+
+  const handleSaveSettings = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    // Get the value or preserve existing - only update if field exists in form
+    const getFieldValue = (fieldName: string, defaultValue: any = '') => {
+      const formValue = formData.get(fieldName);
+      if (formValue !== null) {
+        return formValue.toString();
+      }
+      return settings?.[fieldName] !== undefined ? settings[fieldName] : defaultValue;
+    };
+
+    // Get checkbox value - preserve existing if not in form
+    const getCheckboxValue = (fieldName: string, defaultValue: boolean = true) => {
+      // Check if the field exists in the form
+      const formHasField = formData.has(fieldName);
+      if (formHasField) {
+        return formData.get(fieldName) === 'on';
+      }
+      // Preserve existing value if field not in form
+      return settings?.[fieldName] !== undefined ? settings[fieldName] : defaultValue;
+    };
+    
+    const settingsData = {
+      // SMTP Configuration - preserve existing values
+      mailHost: getFieldValue('mailHost', settings?.mailHost || ''),
+      mailPort: getFieldValue('mailPort', settings?.mailPort || '587'),
+      mailUsername: getFieldValue('mailUsername', settings?.mailUsername || ''),
+      mailPassword: getFieldValue('mailPassword', settings?.mailPassword || ''),
+      mailFromAddress: getFieldValue('mailFromAddress', settings?.mailFromAddress || ''),
+      mailFromName: getFieldValue('mailFromName', settings?.mailFromName || settings?.siteName || 'SRPH-MIS'),
+      companyEmail: getFieldValue('companyEmail', settings?.companyEmail || ''),
+      
+      // Notification Preferences - preserve existing values
+      enableAdminNotifications: getCheckboxValue('enableAdminNotifications', settings?.enableAdminNotifications ?? true),
+      notifyOnCheckin: getCheckboxValue('notifyOnCheckin', settings?.notifyOnCheckin ?? true),
+      notifyOnCheckout: getCheckboxValue('notifyOnCheckout', settings?.notifyOnCheckout ?? true),
+      notifyOnIamExpiration: getCheckboxValue('notifyOnIamExpiration', settings?.notifyOnIamExpiration ?? true),
+      notifyOnVmExpiration: getCheckboxValue('notifyOnVmExpiration', settings?.notifyOnVmExpiration ?? true),
+      notifyOnItEquipmentChanges: getCheckboxValue('notifyOnItEquipmentChanges', settings?.notifyOnItEquipmentChanges ?? true),
+      notifyOnUserChanges: getCheckboxValue('notifyOnUserChanges', settings?.notifyOnUserChanges ?? true),
+      notifyOnVmInventoryChanges: getCheckboxValue('notifyOnVmInventoryChanges', settings?.notifyOnVmInventoryChanges ?? true),
+      notifyOnIamAccountChanges: getCheckboxValue('notifyOnIamAccountChanges', settings?.notifyOnIamAccountChanges ?? true),
+      notifyOnGcpChanges: getCheckboxValue('notifyOnGcpChanges', settings?.notifyOnGcpChanges ?? true),
+      notifyOnAzureChanges: getCheckboxValue('notifyOnAzureChanges', settings?.notifyOnAzureChanges ?? true),
+      
+      // Email Templates - preserve existing values
+      iamExpirationEmailSubject: getFieldValue('iamExpirationEmailSubject', settings?.iamExpirationEmailSubject || ''),
+      iamExpirationEmailBody: getFieldValue('iamExpirationEmailBody', settings?.iamExpirationEmailBody || ''),
+    };
+
+    console.log('Saving email settings:', settingsData);
+    console.log('Current settings before save:', settings);
+    updateSettingsMutation.mutate(settingsData);
+  };
+
+  const handleTestEmail = () => {
+    setIsTesting(true);
+    testEmailMutation.mutate();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
 
-  async sendEmail(options: EmailOptions): Promise<boolean> {
-    if (!this.transporter) {
-      console.log('📧 Email service not initialized - attempting to initialize...');
-      const initialized = await this.initialize();
-      if (!initialized) {
-        console.log('❌ Cannot send email - service not configured. Please configure email settings in System Setup.');
-        console.log('💡 To enable emails: Go to System Setup → Email Settings → Configure SMTP details');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: options.to,
-          subject: options.subject,
-          status: 'failed',
-          error: 'Email service not configured'
-        });
-        return false;
-      }
-    }
+  return (
+    <div className="space-y-6">
+      <PageHeader 
+        title="Email Notifications" 
+        description="Configure email notifications for system modifications and events"
+      >
+        <Button onClick={handleTestEmail} disabled={isTesting} variant="outline">
+          {isTesting ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4 mr-2" />
+          )}
+          Send Test Email
+        </Button>
+      </PageHeader>
 
-    try {
-      const settings = await storage.getSystemSettings();
-      
-      console.log(`📧 Sending email...`);
-      console.log(`   From: ${settings?.mailFromAddress}`);
-      console.log(`   To: ${options.to}`);
-      console.log(`   Subject: ${options.subject}`);
-      
-      const info = await this.transporter!.sendMail({
-        from: `"${settings?.siteName || 'SRPH-MIS'}" <${settings?.mailFromAddress}>`,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text || options.html.replace(/<[^>]*>/g, '')
-      });
+      <form onSubmit={handleSaveSettings} className="space-y-6">
+        <Tabs defaultValue="smtp" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="smtp">SMTP Configuration</TabsTrigger>
+            <TabsTrigger value="preferences">Notification Preferences</TabsTrigger>
+            <TabsTrigger value="templates">Email Templates</TabsTrigger>
+            <TabsTrigger value="logs">Email Logs</TabsTrigger>
+          </TabsList>
 
-      console.log(`✅ Email sent successfully to ${options.to}`);
-      console.log(`   Message ID: ${info.messageId}`);
-      console.log(`   Response: ${info.response}`);
-      
-      await logEmailEvent({
-        timestamp: new Date().toISOString(),
-        to: options.to,
-        subject: options.subject,
-        status: 'success',
-        messageId: info.messageId
-      });
-      
-      return true;
-    } catch (error: any) {
-      console.error('❌ Failed to send email:', error.message);
-      if (error.code) {
-        console.error(`   Error code: ${error.code}`);
-      }
-      if (error.command) {
-        console.error(`   Failed command: ${error.command}`);
-      }
-      
-      await logEmailEvent({
-        timestamp: new Date().toISOString(),
-        to: options.to,
-        subject: options.subject,
-        status: 'failed',
-        error: error.message
-      });
-      
-      return false;
-    }
-  }
-
-  async sendIamExpirationNotification(data: {
-    accounts: Array<{
-      requestor: string;
-      knoxId: string;
-      permission: string;
-      cloudPlatform: string;
-      endDate: string;
-      approvalId: string;
-    }>;
-  }) {
-    try {
-      const settings = await storage.getSystemSettings();
-      
-      if (!settings?.notifyOnIamExpiration) {
-        console.log('📧 IAM expiration notifications are disabled');
-        return false;
-      }
-      
-      if (!settings?.companyEmail) {
-        console.log('❌ No admin email configured for notifications');
-        return false;
-      }
-
-      console.log(`📧 Preparing to send IAM expiration notifications`);
-      console.log(`📧 ${data.accounts.length} expired IAM account(s)`);
-
-      // Send individual notifications to each account owner
-      let ownerNotificationsSent = 0;
-      let adminNotificationsSent = 0;
-
-      for (const account of data.accounts) {
-        try {
-          const ownerEmail = `${account.knoxId}@samsung.com`;
-          
-          console.log(`📧 Processing notifications for ${account.knoxId}...`);
-          
-          // Send to account owner
-          const ownerResult = await this.sendIamExpirationOwnerNotification(account);
-          if (ownerResult) {
-            ownerNotificationsSent++;
-            console.log(`✅ Owner notification sent to ${ownerEmail}`);
-          } else {
-            console.log(`⚠️ Failed to send owner notification to ${ownerEmail}`);
-          }
-
-          // Send to admin for each account
-          const adminSubject = `[SRPH-MIS] IAM Account Expiration Alert - ${account.knoxId}`;
-          
-          const adminHtml = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-                .header { background-color: #ef4444; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
-                .content { background-color: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-                .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-                table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-                th { background-color: #f3f4f6; padding: 10px; border: 1px solid #e5e7eb; text-align: left; }
-                td { padding: 10px; border: 1px solid #e5e7eb; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h2>⚠️ IAM Account Expiration Alert</h2>
+          <TabsContent value="smtp" className="space-y-4 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  SMTP Server Settings
+                </CardTitle>
+                <CardDescription>
+                  Configure your email server to enable notifications
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mailHost">SMTP Server</Label>
+                    <Input
+                      id="mailHost"
+                      name="mailHost"
+                      placeholder="smtp.gmail.com"
+                      defaultValue={settings?.mailHost || ''}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mailPort">Port</Label>
+                    <Input
+                      id="mailPort"
+                      name="mailPort"
+                      type="number"
+                      placeholder="587"
+                      defaultValue={settings?.mailPort || '587'}
+                    />
+                  </div>
                 </div>
-                <div class="content">
-                  <p><strong>The following IAM account has expired and requires attention:</strong></p>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Requestor</th>
-                        <th>Knox ID</th>
-                        <th>Permission</th>
-                        <th>Platform</th>
-                        <th>End Date</th>
-                        <th>Approval ID</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td>${account.requestor}</td>
-                        <td>${account.knoxId}</td>
-                        <td>${account.permission}</td>
-                        <td>${account.cloudPlatform}</td>
-                        <td>${account.endDate}</td>
-                        <td style="font-weight: bold; color: #ef4444;">${account.approvalId}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <p><strong>Action Required:</strong></p>
-                  <ul>
-                    <li>Review and update expired account</li>
-                    <li>Contact requestor for extension if needed</li>
-                    <li>Remove access if no longer required</li>
-                    <li>Update status to "Expired - Notified" after notification</li>
-                  </ul>
-                  <p><strong>Note:</strong> Notification has been sent to ${ownerEmail}</p>
-                  <p>This is an automated notification from SRPH-MIS.</p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mailUsername">Username</Label>
+                    <Input
+                      id="mailUsername"
+                      name="mailUsername"
+                      placeholder="your-email@example.com"
+                      defaultValue={settings?.mailUsername || ''}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mailPassword">Password</Label>
+                    <Input
+                      id="mailPassword"
+                      name="mailPassword"
+                      type="password"
+                      placeholder="••••••••"
+                      defaultValue={settings?.mailPassword || ''}
+                    />
+                  </div>
                 </div>
-                <div class="footer">
-                  <p>SRPH Management Information System</p>
-                  <p>This email was sent automatically. Please do not reply.</p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mailFromAddress">From Email</Label>
+                    <Input
+                      id="mailFromAddress"
+                      name="mailFromAddress"
+                      type="email"
+                      placeholder="noreply@example.com"
+                      defaultValue={settings?.mailFromAddress || ''}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mailFromName">From Name</Label>
+                    <Input
+                      id="mailFromName"
+                      name="mailFromName"
+                      placeholder="SRPH-MIS"
+                      defaultValue={settings?.mailFromName || settings?.siteName || 'SRPH-MIS'}
+                    />
+                  </div>
                 </div>
-              </div>
-            </body>
-            </html>
-          `;
 
-          const adminResult = await this.sendEmail({
-            to: settings.companyEmail,
-            subject: adminSubject,
-            html: adminHtml
-          });
+                <div className="space-y-2">
+                  <Label htmlFor="companyEmail">Admin Email (Receives All Notifications)</Label>
+                  <Input
+                    id="companyEmail"
+                    name="companyEmail"
+                    type="email"
+                    placeholder="admin@example.com"
+                    defaultValue={settings?.companyEmail || ''}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          if (adminResult) {
-            adminNotificationsSent++;
-            console.log(`✅ Admin notification sent to ${settings.companyEmail} for ${account.knoxId}`);
-          } else {
-            console.log(`⚠️ Failed to send admin notification to ${settings.companyEmail} for ${account.knoxId}`);
-          }
-        } catch (accountError) {
-          console.error(`❌ Failed to send notifications for ${account.knoxId}:`, accountError);
-        }
-      }
+          <TabsContent value="preferences" className="space-y-4 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  Notification Settings
+                </CardTitle>
+                <CardDescription>
+                  All email notifications are enabled by default
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 rounded-lg border border-green-200 bg-green-50">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-green-500 flex items-center justify-center">
+                        <CheckCircle className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <Label className="font-medium text-base">All Notifications Enabled</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Email notifications are automatically sent for all system events
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="bg-green-500">ACTIVE</Badge>
+                  </div>
 
-      console.log(`📧 SUMMARY: Total notifications sent - ${ownerNotificationsSent} to owners, ${adminNotificationsSent} to admin`);
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">Check-out</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
 
-      return ownerNotificationsSent > 0 || adminNotificationsSent > 0;
-    } catch (error) {
-      console.error('❌ Error sending IAM expiration notification:', error);
-      return false;
-    }
-  }
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">Check-in</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
 
-  async sendIamExpirationOwnerNotification(account: {
-    requestor: string;
-    knoxId: string;
-    permission: string;
-    cloudPlatform: string;
-    endDate: string;
-    approvalId: string;
-  }) {
-    try {
-      const settings = await storage.getSystemSettings();
-      
-      if (!this.transporter) {
-        console.log('📧 Email service not initialized - skipping owner notification');
-        return false;
-      }
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">IAM Expiration</p>
+                        <p className="text-xs text-muted-foreground">Daily check - Always enabled</p>
+                      </div>
+                    </div>
 
-      const ownerEmail = `${account.knoxId}@samsung.com`;
-      
-      // Calculate removal date (7 days from now)
-      const removalDate = new Date();
-      removalDate.setDate(removalDate.getDate() + 7);
-      const removalDateStr = removalDate.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      });
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">VM Expiration</p>
+                        <p className="text-xs text-muted-foreground">Daily check - Always enabled</p>
+                      </div>
+                    </div>
 
-      // Use custom template from settings or default
-      const subject = settings?.iamExpirationEmailSubject || 'IAM Account Access Expiration Notice';
-      
-      // Default template if none is configured
-      const defaultTemplate = `Hi,
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">IT Equipment</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">User Changes</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">VM Inventory</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">IAM Accounts</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">GCP Changes</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="font-medium text-sm">Azure Changes</p>
+                        <p className="text-xs text-muted-foreground">Always enabled</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Automatic Notification Events</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>Asset creation/updates/deletions</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>User account modifications</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>License assignments</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>Inventory updates</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>IT Equipment modifications</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>VM Inventory changes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>IAM Account changes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>GCP resource changes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>Azure resource changes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    <span>IAM expirations (owner + admin)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    <span>System alerts</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="templates" className="space-y-4 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  IAM Expiration Email Template
+                </CardTitle>
+                <CardDescription>
+                  Customize emails sent to IAM account owners and admin
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="iamExpirationEmailSubject">Email Subject</Label>
+                  <Input
+                    id="iamExpirationEmailSubject"
+                    name="iamExpirationEmailSubject"
+                    placeholder="IAM Account Access Expiration Notice"
+                    defaultValue={settings?.iamExpirationEmailSubject || 'IAM Account Access Expiration Notice'}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="iamExpirationEmailBody">Email Body Template</Label>
+                  <textarea
+                    id="iamExpirationEmailBody"
+                    name="iamExpirationEmailBody"
+                    className="w-full min-h-[250px] p-3 border rounded-md font-mono text-sm"
+                    defaultValue={settings?.iamExpirationEmailBody || `Hi,
 
 Please be advised that your requested access is now expired and will be removed on {removalDate}.
 
@@ -323,334 +479,124 @@ Account Details:
 - Expiration Date: {endDate}
 - Approval ID: {approvalId}
 
-If you need to extend your access, please submit a new request through the proper channels.`;
+If you need to extend your access, please submit a new request through the proper channels.`}
+                  />
+                </div>
 
-      // Use the custom template from settings, or fall back to default
-      let emailBody = settings?.iamExpirationEmailBody && settings.iamExpirationEmailBody.trim() !== '' 
-        ? settings.iamExpirationEmailBody 
-        : defaultTemplate;
+                <div className="rounded-lg bg-muted p-3">
+                  <h4 className="font-medium text-sm mb-2">Available Placeholders:</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}removalDate{'}'}</code> - Removal date (7 days)</div>
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}requestor{'}'}</code> - Requestor name</div>
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}knoxId{'}'}</code> - Knox ID</div>
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}permission{'}'}</code> - Permission details</div>
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}cloudPlatform{'}'}</code> - Cloud platform</div>
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}endDate{'}'}</code> - Expiration date</div>
+                    <div><code className="bg-background px-1 py-0.5 rounded text-xs">{'{'}approvalId{'}'}</code> - Approval ID</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-      console.log('📧 Using email template:', emailBody.substring(0, 100) + '...');
+          <TabsContent value="logs" className="space-y-4 mt-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Mail className="h-5 w-5" />
+                      Email Notification Logs
+                    </CardTitle>
+                    <CardDescription>
+                      View all email notifications sent by the system
+                    </CardDescription>
+                  </div>
+                  <Button onClick={() => refetchLogs()} variant="outline" size="sm">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[600px]">
+                  {!emailLogs || emailLogs.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No email logs found</p>
+                      <p className="text-sm">Email notifications will appear here once sent</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {emailLogs.map((log: any, index: number) => (
+                        <div
+                          key={index}
+                          className={`p-4 rounded-lg border ${
+                            log.status === 'success'
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-red-50 border-red-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              {log.status === 'success' ? (
+                                <CheckCircle className="h-5 w-5 text-green-600" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-red-600" />
+                              )}
+                              <Badge variant={log.status === 'success' ? 'default' : 'destructive'}>
+                                {log.status === 'success' ? 'Sent' : 'Failed'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {new Date(log.timestamp).toLocaleString()}
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <div className="flex items-start gap-2">
+                              <span className="text-sm font-medium min-w-[60px]">To:</span>
+                              <span className="text-sm">{log.to}</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-sm font-medium min-w-[60px]">Subject:</span>
+                              <span className="text-sm">{log.subject}</span>
+                            </div>
+                            {log.messageId && (
+                              <div className="flex items-start gap-2">
+                                <span className="text-sm font-medium min-w-[60px]">ID:</span>
+                                <span className="text-sm font-mono text-xs">{log.messageId}</span>
+                              </div>
+                            )}
+                            {log.error && (
+                              <div className="flex items-start gap-2 mt-2">
+                                <span className="text-sm font-medium min-w-[60px] text-red-600">Error:</span>
+                                <span className="text-sm text-red-600">{log.error}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
-      // Replace placeholders with actual values
-      emailBody = emailBody
-        .replace(/{removalDate}/g, removalDateStr)
-        .replace(/{requestor}/g, account.requestor)
-        .replace(/{knoxId}/g, account.knoxId)
-        .replace(/{permission}/g, account.permission)
-        .replace(/{cloudPlatform}/g, account.cloudPlatform)
-        .replace(/{endDate}/g, account.endDate)
-        .replace(/{approvalId}/g, account.approvalId);
-
-      // Convert plain text to HTML with proper formatting
-      const emailBodyHtml = emailBody
-        .split('\n')
-        .map(line => {
-          const trimmedLine = line.trim();
-          if (trimmedLine.startsWith('http://') || trimmedLine.startsWith('https://')) {
-            return `<p><a href="${trimmedLine}" style="color: #2563eb; text-decoration: none;">${trimmedLine}</a></p>`;
-          }
-          return trimmedLine ? `<p>${line}</p>` : '<br>';
-        })
-        .join('\n');
-
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #ef4444; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
-            .content { background-color: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-            a { color: #2563eb; text-decoration: none; }
-            code { background-color: #f3f4f6; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
-            p { margin: 0.5em 0; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2>⚠️ ${subject}</h2>
-            </div>
-            <div class="content">
-              ${emailBodyHtml}
-              <p style="margin-top: 20px; font-style: italic; color: #6b7280;">This is an automated notification from SRPH-MIS.</p>
-            </div>
-            <div class="footer">
-              <p>SRPH Management Information System</p>
-              <p>This email was sent automatically. Please do not reply.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      console.log(`📧 Sending IAM expiration email to ${ownerEmail} with subject: ${subject}`);
-
-      const result = await this.sendEmail({
-        to: ownerEmail,
-        subject,
-        html
-      });
-
-      return result;
-    } catch (error) {
-      console.error('❌ Error sending IAM owner notification:', error);
-      return false;
-    }
-  }
-
-  async sendVmExpirationNotification(data: {
-    vms: Array<{
-      vmName: string;
-      knoxId: string;
-      requestor: string;
-      department: string;
-      endDate: string;
-      approvalNumber: string;
-    }>;
-  }) {
-    try {
-      const settings = await storage.getSystemSettings();
-      
-      if (!settings?.notifyOnVmExpiration) {
-        console.log('📧 VM expiration notifications are disabled');
-        return false;
-      }
-      
-      if (!settings?.companyEmail) {
-        console.log('❌ No admin email configured for notifications');
-        return false;
-      }
-
-      console.log(`📧 Preparing to send VM expiration notification to: ${settings.companyEmail}`);
-      console.log(`📧 ${data.vms.length} expired VM(s)`);
-
-      const subject = `[SRPH-MIS] VM Expiration Alert - ${data.vms.length} Virtual Machine(s)`;
-      
-      const vmsHtml = data.vms.map(vm => `
-        <tr>
-          <td style="padding: 10px; border: 1px solid #e5e7eb;">${vm.vmName}</td>
-          <td style="padding: 10px; border: 1px solid #e5e7eb;">${vm.knoxId || 'N/A'}</td>
-          <td style="padding: 10px; border: 1px solid #e5e7eb;">${vm.requestor}</td>
-          <td style="padding: 10px; border: 1px solid #e5e7eb;">${vm.department || 'N/A'}</td>
-          <td style="padding: 10px; border: 1px solid #e5e7eb;">${vm.endDate}</td>
-          <td style="padding: 10px; border: 1px solid #e5e7eb; font-weight: bold; color: #ef4444;">${vm.approvalNumber || 'N/A'}</td>
-        </tr>
-      `).join('');
-
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #ef4444; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
-            .content { background-color: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th { background-color: #f3f4f6; padding: 10px; border: 1px solid #e5e7eb; text-align: left; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2>⚠️ Virtual Machine Expiration Alert</h2>
-            </div>
-            <div class="content">
-              <p><strong>The following virtual machines have reached their end date and require attention:</strong></p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>VM Name</th>
-                    <th>Knox ID</th>
-                    <th>Requestor</th>
-                    <th>Department</th>
-                    <th>End Date</th>
-                    <th>Approval Number</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${vmsHtml}
-                </tbody>
-              </table>
-              <p><strong>Action Required:</strong></p>
-              <ul>
-                <li>Review and update expired VMs</li>
-                <li>Contact requestors for extension if needed</li>
-                <li>Decommission VMs if no longer required</li>
-                <li>Update status to "Overdue - Notified" after notification</li>
-              </ul>
-              <p>This is an automated notification from SRPH-MIS.</p>
-            </div>
-            <div class="footer">
-              <p>SRPH Management Information System</p>
-              <p>This email was sent automatically. Please do not reply.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      const result = await this.sendEmail({
-        to: settings.companyEmail,
-        subject,
-        html
-      });
-
-      if (result) {
-        console.log(`✅ VM expiration notification sent successfully to ${settings.companyEmail}`);
-      }
-
-      return result;
-    } catch (error) {
-      console.error('❌ Error sending VM expiration notification:', error);
-      return false;
-    }
-  }
-
-  async sendModificationNotification(data: {
-    action: string;
-    itemType: string;
-    itemName: string;
-    userName: string;
-    details: string;
-    timestamp: string;
-  }) {
-    try {
-      console.log(`\n📧 [EMAIL SERVICE] sendModificationNotification called`);
-      console.log(`   Item: ${data.itemType} - ${data.itemName}`);
-      console.log(`   Action: ${data.action}`);
-      
-      const settings = await storage.getSystemSettings();
-      
-      const companyEmail = settings?.companyEmail;
-      const mailHost = settings?.mailHost;
-      
-      console.log(`   Settings loaded:`, {
-        companyEmail: companyEmail || 'NOT SET',
-        mailHost: mailHost || 'NOT SET',
-        mailConfigured: !!(companyEmail && mailHost)
-      });
-      
-      console.log('   ✅ All notifications are ALWAYS ON (preference checks removed)');
-      
-      if (!settings?.companyEmail) {
-        console.log('   ❌ No admin email configured');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'No admin email configured'
-        });
-        return false;
-      }
-      
-      if (!settings?.mailHost) {
-        console.log('   ❌ No mail host configured');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings.companyEmail,
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'No mail host configured'
-        });
-        return false;
-      }
-
-      console.log(`   ✅ Email configuration verified`);
-      console.log(`   📬 Sending to: ${settings.companyEmail}`);
-      console.log(`   📝 Subject: [SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`);
-
-      const subject = `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`;
-      
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #2563eb; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
-            .content { background-color: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-            .details { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #2563eb; }
-            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-            .action-badge { display: inline-block; padding: 5px 10px; border-radius: 3px; font-weight: bold; }
-            .action-create { background-color: #10b981; color: white; }
-            .action-update { background-color: #f59e0b; color: white; }
-            .action-delete { background-color: #ef4444; color: white; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2>🔔 System Modification Alert</h2>
-            </div>
-            <div class="content">
-              <p>A modification has been made in the system:</p>
-              <div class="details">
-                <p><strong>Action:</strong> <span class="action-badge action-${data.action.toLowerCase()}">${data.action.toUpperCase()}</span></p>
-                <p><strong>Item Type:</strong> ${data.itemType}</p>
-                <p><strong>Item Name:</strong> ${data.itemName}</p>
-                <p><strong>Modified By:</strong> ${data.userName}</p>
-                <p><strong>Details:</strong> ${data.details}</p>
-                <p><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
-              </div>
-              <p>This is an automated notification from SRPH-MIS.</p>
-            </div>
-            <div class="footer">
-              <p>SRPH Management Information System</p>
-              <p>This email was sent automatically. Please do not reply.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      console.log(`   📤 Calling sendEmail...`);
-      const result = await this.sendEmail({
-        to: settings.companyEmail,
-        subject,
-        html
-      });
-
-      console.log(`   Result: ${result ? '✅ SUCCESS' : '❌ FAILED'}`);
-
-      if (result) {
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings.companyEmail,
-          subject,
-          status: 'success',
-          messageId: `modification-${data.itemType}-${Date.now()}`
-        });
-      } else {
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings.companyEmail,
-          subject,
-          status: 'failed',
-          error: 'Email service returned false'
-        });
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error('❌ Error sending modification notification:', error);
-      await logEmailEvent({
-        timestamp: new Date().toISOString(),
-        to: 'N/A',
-        subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-        status: 'failed',
-        error: error.message || 'Unknown error'
-      });
-      return false;
-    }
-  }
+        <div className="flex justify-end">
+          <Button type="submit" disabled={updateSettingsMutation.isPending}>
+            {updateSettingsMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Save Settings
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
 }
-
-export const emailService = new EmailService();
