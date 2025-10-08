@@ -1,1491 +1,806 @@
-import { db } from "./db";
-import { eq } from "drizzle-orm";
-import { sql } from "drizzle-orm";
-import { systemSettings } from "@shared/schema";
+import { useState, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { PlusIcon, CheckCircleIcon, MonitorIcon, CalendarIcon, DownloadIcon, UploadIcon, FileDownIcon, SearchIcon, Trash2Icon, AlertTriangleIcon } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
+import ITEquipmentForm from "@/components/it-equipment/it-equipment-form";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Separator } from "@/components/ui/separator";
+import { formatDate, downloadCSV } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import ITEquipmentCSVImport from "@/components/it-equipment/it-equipment-csv-import";
 
-export async function runMigrations() {
-  try {
-    console.log("🔄 Starting comprehensive database verification...");
+export default function ITEquipment() {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [selectedForAssignment, setSelectedForAssignment] = useState<any | null>(null);
+  const [assignmentData, setAssignmentData] = useState({
+    assignedTo: '',
+    quantity: 1,
+    knoxId: '',
+    serialNumber: '',
+    notes: ''
+  });
+  const { toast } = useToast();
+  const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-    // Test database connection first
-    await db.execute(sql`SELECT 1 as test`);
-    console.log("✅ Database connection established");
+  // Fetch IT equipment
+  const { data: equipment = [], isLoading } = useQuery({
+    queryKey: ['/api/it-equipment'],
+    queryFn: async () => {
+      const response = await fetch('/api/it-equipment');
+      if (!response.ok) throw new Error('Failed to fetch IT equipment');
+      return response.json();
+    },
+  });
 
-    // Function to check if table exists
-    async function tableExists(tableName: string): Promise<boolean> {
+  // Create IT equipment mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
       try {
-        const result = await db.execute(sql`
-          SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = ${tableName}
-          );
-        `);
-        return result.rows[0].exists;
-      } catch (error) {
-        console.log(`❌ Error checking table ${tableName}:`, error.message);
-        return false;
-      }
-    }
-
-    // Function to check if column exists
-    async function columnExists(tableName: string, columnName: string): Promise<boolean> {
-      try {
-        const result = await db.execute(sql`
-          SELECT EXISTS (
-            SELECT FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            AND table_name = ${tableName}
-            AND column_name = ${columnName}
-          );
-        `);
-        return result.rows[0].exists;
-      } catch (error) {
-        console.log(`❌ Error checking column ${columnName} in ${tableName}:`, error.message);
-        return false;
-      }
-    }
-
-    // Function to add missing column
-    async function addColumn(tableName: string, columnName: string, columnDefinition: string) {
-      try {
-        await db.execute(sql.raw(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`));
-        console.log(`✅ Added missing column ${columnName} to ${tableName}`);
-      } catch (error) {
-        console.log(`⚠️ Could not add column ${columnName} to ${tableName}:`, error.message);
-      }
-    }
-
-    // Function to add missing columns to VM inventory table
-    async function addMissingVMInventoryColumns() {
-      console.log("🔎 Checking for missing columns in vm_inventory...");
-      const vmInventoryColumns = [
-        // Core VM Information - New required fields
-        ['vm_id', 'TEXT'],
-        ['vm_name', 'TEXT NOT NULL'],
-        ['vm_status', 'TEXT NOT NULL DEFAULT \'Active\''],
-        ['vm_ip', 'TEXT'],
-        ['vm_os', 'TEXT'],
-        ['cpu_count', 'INTEGER DEFAULT 0'],
-        ['memory_gb', 'INTEGER DEFAULT 0'],
-        ['disk_capacity_gb', 'INTEGER DEFAULT 0'],
-
-        // Request and Approval Information
-        ['requestor', 'TEXT'],
-        ['knox_id', 'TEXT'],
-        ['department', 'TEXT'],
-        ['start_date', 'TEXT'],
-        ['end_date', 'TEXT'],
-        ['jira_number', 'TEXT'],
-        ['approval_number', 'TEXT'],
-        ['remarks', 'TEXT'],
-
-        // Legacy compatibility fields
-        ['internet_access', 'BOOLEAN DEFAULT FALSE'],
-        ['vm_os_version', 'TEXT'],
-        ['hypervisor', 'TEXT'],
-        ['host_name', 'TEXT'],
-        ['host_model', 'TEXT'],
-        ['host_ip', 'TEXT'],
-        ['host_os', 'TEXT'],
-        ['rack', 'TEXT'],
-        ['deployed_by', 'TEXT'],
-        ['"user"', 'TEXT'],
-        ['jira_ticket', 'TEXT'],
-        ['date_deleted', 'TEXT'],
-        ['guest_os', 'TEXT'],
-        ['power_state', 'TEXT'],
-        ['memory_mb', 'INTEGER'],
-        ['disk_gb', 'INTEGER'],
-        ['ip_address', 'TEXT'],
-        ['mac_address', 'TEXT'],
-        ['vmware_tools', 'TEXT'],
-        ['cluster', 'TEXT'],
-        ['datastore', 'TEXT'],
-        ['status', 'TEXT DEFAULT \'available\''],
-        ['assigned_to', 'INTEGER'],
-        ['location', 'TEXT'],
-        ['serial_number', 'TEXT'],
-        ['model', 'TEXT'],
-        ['manufacturer', 'TEXT'],
-        ['purchase_date', 'TEXT'],
-        ['purchase_cost', 'TEXT'],
-        ['created_date', 'TEXT DEFAULT CURRENT_TIMESTAMP'],
-        ['last_modified', 'TEXT DEFAULT CURRENT_TIMESTAMP'],
-        ['notes', 'TEXT']
-      ];
-
-      for (const [columnName, definition] of vmInventoryColumns) {
-        if (!(await columnExists('vm_inventory', columnName))) {
-          await addColumn('vm_inventory', columnName, definition);
+        // Validate data before sending
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid data provided');
         }
-      }
 
-      // Specific check for critical fields
-      if (!(await columnExists('vm_inventory', 'requestor'))) {
-        await addColumn('vm_inventory', 'requestor', 'TEXT');
-        console.log("✅ Added missing requestor column");
-      }
-      if (!(await columnExists('vm_inventory', 'jira_number'))) {
-        await addColumn('vm_inventory', 'jira_number', 'TEXT');
-        console.log("✅ Added missing jira_number column");
-      }
-
-      console.log("✅ VM inventory column check completed.");
-    }
-
-    // Verify users table and columns
-    if (!(await tableExists('users'))) {
-      await db.execute(sql`
-        CREATE TABLE users (
-          id SERIAL PRIMARY KEY,
-          username TEXT UNIQUE NOT NULL,
-          password TEXT NOT NULL,
-          first_name TEXT NOT NULL,
-          last_name TEXT NOT NULL,
-          email TEXT NOT NULL,
-          department TEXT,
-          is_admin BOOLEAN DEFAULT FALSE,
-          role_id INTEGER,
-          permissions JSON DEFAULT '{"assets":{"view":true,"edit":false,"add":false},"components":{"view":true,"edit":false,"add":false},"accessories":{"view":true,"edit":false,"add":false},"consumables":{"view":true,"edit":false,"add":false},"licenses":{"view":true,"edit":false,"add":false},"users":{"view":false,"edit":false,"add":false},"reports":{"view":true,"edit":false,"add":false},"vmMonitoring":{"view":true,"edit":false,"add":false},"networkDiscovery":{"view":true,"edit":false,"add":false},"bitlockerKeys":{"view":false,"edit":false,"add":false},"admin":{"view":false,"edit":false,"add":false}}'
-        )
-      `);
-      console.log("✅ Users table created");
-    } else {
-      console.log("✅ Users table exists - verifying columns");
-      // Check and add missing columns
-      const userColumns = [
-        ['username', 'TEXT UNIQUE NOT NULL'],
-        ['password', 'TEXT NOT NULL'],
-        ['first_name', 'TEXT NOT NULL'],
-        ['last_name', 'TEXT NOT NULL'],
-        ['email', 'TEXT NOT NULL'],
-        ['department', 'TEXT'],
-        ['is_admin', 'BOOLEAN DEFAULT FALSE'],
-        ['role_id', 'INTEGER'],
-        ['permissions', 'JSON DEFAULT \'{"assets":{"view":true,"edit":false,"add":false},"components":{"view":true,"edit":false,"add":false},"accessories":{"view":true,"edit":false,"add":false},"consumables":{"view":true,"edit":false,"add":false},"licenses":{"view":true,"edit":false,"add":false},"users":{"view":false,"edit":false,"add":false},"reports":{"view":true,"edit":false,"add":false},"vmMonitoring":{"view":true,"edit":false,"add":false},"networkDiscovery":{"view":true,"edit":false,"add":false},"bitlockerKeys":{"view":false,"edit":false,"add":false},"admin":{"view":false,"edit":false,"add":false}}\'']
-      ];
-
-      for (const [columnName, definition] of userColumns) {
-        if (!(await columnExists('users', columnName))) {
-          await addColumn('users', columnName, definition);
-        }
-      }
-    }
-
-    // Add mfaEnabled, mfaSecret, and forcePasswordChange columns if they don't exist
-    try {
-      await db.execute(sql`
-        DO $$ 
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'users' AND column_name = 'mfa_enabled'
-          ) THEN
-            ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN DEFAULT FALSE;
-          END IF;
-
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'users' AND column_name = 'mfa_secret'
-          ) THEN
-            ALTER TABLE users ADD COLUMN mfa_secret TEXT;
-          END IF;
-
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'users' AND column_name = 'force_password_change'
-          ) THEN
-            ALTER TABLE users ADD COLUMN force_password_change BOOLEAN DEFAULT FALSE;
-          END IF;
-        END $$;
-      `);
-      console.log('✅ MFA and password management columns added/verified in users table');
-    } catch (mfaError) {
-      console.error('⚠️ Error adding MFA/password columns:', mfaError);
-    }
-
-    // Function to add missing notification columns
-    async function addMissingNotificationColumns() {
-      console.log("🔎 Checking for missing notification columns in system_settings...");
-
-      const notificationColumns = [
-        ['notify_on_it_equipment_changes', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_user_changes', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_vm_inventory_changes', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_iam_account_changes', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_gcp_changes', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_azure_changes', 'BOOLEAN DEFAULT TRUE'],
-        ['enable_admin_notifications', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_checkout', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_checkin', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_iam_expiration', 'BOOLEAN DEFAULT TRUE'],
-        ['notify_on_vm_expiration', 'BOOLEAN DEFAULT TRUE']
-      ];
-
-      for (const [columnName, columnDef] of notificationColumns) {
-        if (!(await columnExists('system_settings', columnName))) {
-          await addColumn('system_settings', columnName, columnDef);
-          console.log('✅ Added missing notification column: ' + columnName);
-        }
-      }
-
-      console.log("✅ All notification columns verified");
-    }
-
-    // Run notification columns check
-    await addMissingNotificationColumns();
-
-    // Verify assets table and columns
-    if (!(await tableExists('assets'))) {
-      await db.execute(sql`
-        CREATE TABLE assets (
-          id SERIAL PRIMARY KEY,
-          asset_tag TEXT NOT NULL UNIQUE,
-          name TEXT NOT NULL,
-          description TEXT,
-          category TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'available',
-          condition TEXT NOT NULL DEFAULT 'Good',
-          purchase_date TEXT,
-          purchase_cost TEXT,
-          location TEXT,
-          serial_number TEXT,
-          model TEXT,
-          manufacturer TEXT,
-          notes TEXT,
-          knox_id TEXT,
-          ip_address TEXT,
-          mac_address TEXT,
-          os_type TEXT,
-          assigned_to INTEGER REFERENCES users(id),
-          checkout_date TEXT,
-          expected_checkin_date TEXT,
-          finance_updated BOOLEAN DEFAULT FALSE,
-          department TEXT
-        )
-      `);
-      console.log("✅ Assets table created");
-    } else {
-      console.log("✅ Assets table exists - verifying columns");
-      const assetColumns = [
-        ['asset_tag', 'TEXT NOT NULL UNIQUE'],
-        ['name', 'TEXT NOT NULL'],
-        ['description', 'TEXT'],
-        ['category', 'TEXT NOT NULL'],
-        ['status', 'TEXT NOT NULL DEFAULT \'available\''],
-        ['condition', 'TEXT NOT NULL DEFAULT \'Good\''],
-        ['purchase_date', 'TEXT'],
-        ['purchase_cost', 'TEXT'],
-        ['location', 'TEXT'],
-        ['serial_number', 'TEXT'],
-        ['model', 'TEXT'],
-        ['manufacturer', 'TEXT'],
-        ['notes', 'TEXT'],
-        ['knox_id', 'TEXT'],
-        ['ip_address', 'TEXT'],
-        ['mac_address', 'TEXT'],
-        ['os_type', 'TEXT'],
-        ['assigned_to', 'INTEGER'],
-        ['checkout_date', 'TEXT'],
-        ['expected_checkin_date', 'TEXT'],
-        ['finance_updated', 'BOOLEAN DEFAULT FALSE'],
-        ['department', 'TEXT']
-      ];
-
-      for (const [columnName, definition] of assetColumns) {
-        if (!(await columnExists('assets', columnName))) {
-          await addColumn('assets', columnName, definition);
-        }
-      }
-    }
-
-    // Define all table schemas for verification
-    const tableSchemas = {
-      components: [
-        ['name', 'TEXT NOT NULL'],
-        ['type', 'TEXT NOT NULL DEFAULT \'Unknown\''],
-        ['category', 'TEXT NOT NULL'],
-        ['quantity', 'INTEGER NOT NULL DEFAULT 0'],
-        ['status', 'TEXT DEFAULT \'available\''],
-        ['description', 'TEXT'],
-        ['location', 'TEXT'],
-        ['serial_number', 'TEXT'],
-        ['model', 'TEXT'],
-        ['manufacturer', 'TEXT'],
-        ['purchase_date', 'TEXT'],
-        ['purchase_cost', 'TEXT'],
-        ['warranty_expiry', 'TEXT'],
-        ['assigned_to', 'TEXT'],
-        ['date_released', 'TEXT'],
-        ['date_returned', 'TEXT'],
-        ['released_by', 'TEXT'],
-        ['returned_to', 'TEXT'],
-        ['specifications', 'TEXT'],
-        ['notes', 'TEXT'],
-        ['created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
-        ['updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP']
-      ],
-      accessories: [
-        ['name', 'TEXT NOT NULL'],
-        ['category', 'TEXT NOT NULL'],
-        ['status', 'TEXT NOT NULL'],
-        ['quantity', 'INTEGER NOT NULL DEFAULT 1'],
-        ['description', 'TEXT'],
-        ['location', 'TEXT'],
-        ['serial_number', 'TEXT'],
-        ['model', 'TEXT'],
-        ['manufacturer', 'TEXT'],
-        ['purchase_date', 'TEXT'],
-        ['purchase_cost', 'TEXT'],
-        ['assigned_to', 'INTEGER'],
-        ['knox_id', 'TEXT'],
-        ['date_released', 'TEXT'],
-        ['date_returned', 'TEXT'],
-        ['released_by', 'TEXT'],
-        ['returned_to', 'TEXT'],
-        ['notes', 'TEXT'],
-        ['created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
-        ['updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP']
-      ],
-      consumables: [
-        ['name', 'TEXT NOT NULL'],
-        ['category', 'TEXT NOT NULL'],
-        ['quantity', 'INTEGER NOT NULL DEFAULT 1'],
-        ['status', 'TEXT NOT NULL DEFAULT \'available\''],
-        ['location', 'TEXT'],
-        ['model_number', 'TEXT'],
-        ['manufacturer', 'TEXT'],
-        ['purchase_date', 'TEXT'],
-        ['purchase_cost', 'TEXT'],
-        ['notes', 'TEXT']
-      ],
-      licenses: [
-        ['name', 'TEXT NOT NULL'],
-        ['key', 'TEXT NOT NULL'],
-        ['seats', 'TEXT'],
-        ['assigned_seats', 'INTEGER DEFAULT 0'],
-        ['company', 'TEXT'],
-        ['manufacturer', 'TEXT'],
-        ['purchase_date', 'TEXT'],
-        ['expiration_date', 'TEXT'],
-        ['purchase_cost', 'TEXT'],
-        ['status', 'TEXT NOT NULL'],
-        ['notes', 'TEXT'],
-        ['assigned_to', 'INTEGER']
-      ],
-      monitor_inventory: [
-        ['seat_number', 'TEXT NOT NULL'],
-        ['knox_id', 'TEXT'],
-        ['asset_number', 'TEXT'],
-        ['serial_number', 'TEXT'],
-        ['model', 'TEXT'],
-        ['remarks', 'TEXT'],
-        ['department', 'TEXT'],
-        ['created_at', 'TEXT DEFAULT CURRENT_TIMESTAMP'],
-        ['updated_at', 'TEXT DEFAULT CURRENT_TIMESTAMP']
-      ],
-      bitlocker_keys: [
-        ['serial_number', 'TEXT NOT NULL'],
-        ['identifier', 'TEXT NOT NULL'],
-        ['recovery_key', 'TEXT NOT NULL'],
-        ['notes', 'TEXT'],
-        ['date_added', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
-        ['updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP']
-      ]
-    };
-
-    // Verify or create each table with its columns
-    for (const [tableName, columns] of Object.entries(tableSchemas)) {
-      if (!(await tableExists(tableName))) {
-        const columnDefs = columns.map(([name, def]) => `${name} ${def}`).join(', ');
-        await db.execute(sql.raw(`CREATE TABLE ${tableName} (id SERIAL PRIMARY KEY, ${columnDefs})`));
-        console.log(`✅ ${tableName} table created`);
-      } else {
-        console.log(`✅ ${tableName} table exists - verifying columns`);
-        for (const [columnName, definition] of columns) {
-          if (!(await columnExists(tableName, columnName))) {
-            await addColumn(tableName, columnName, definition);
-          }
-        }
-      }
-    }
-
-    // Create components table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS components (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL DEFAULT 'Unknown',
-        category TEXT NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 0,
-        status TEXT DEFAULT 'available',
-        description TEXT,
-        location TEXT,
-        serial_number TEXT,
-        model TEXT,
-        manufacturer TEXT,
-        purchase_date TEXT,
-        purchase_cost TEXT,
-        warranty_expiry TEXT,
-        assigned_to TEXT,
-        date_released TEXT,
-        date_returned TEXT,
-        released_by TEXT,
-        returned_to TEXT,
-        specifications TEXT,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Create remaining essential tables with verification
-    const essentialTables = [
-      {
-        name: 'activities',
-        sql: `CREATE TABLE activities (
-          id SERIAL PRIMARY KEY,
-          action TEXT NOT NULL,
-          item_type TEXT NOT NULL,
-          item_id INTEGER NOT NULL,
-          user_id INTEGER REFERENCES users(id),
-          timestamp TEXT NOT NULL,
-          notes TEXT
-        )`
-      },
-      {
-        name: 'license_assignments',
-        sql: `CREATE TABLE license_assignments (
-          id SERIAL PRIMARY KEY,
-          license_id INTEGER NOT NULL,
-          assigned_to TEXT NOT NULL,
-          notes TEXT,
-          assigned_date TEXT NOT NULL
-        )`
-      },
-      {
-        name: 'consumable_assignments',
-        sql: `CREATE TABLE consumable_assignments (
-          id SERIAL PRIMARY KEY,
-          consumable_id INTEGER NOT NULL,
-          assigned_to TEXT NOT NULL,
-          serial_number TEXT,
-          knox_id TEXT,
-          quantity INTEGER NOT NULL DEFAULT 1,
-          assigned_date TEXT NOT NULL,
-          returned_date TEXT,
-          status TEXT NOT NULL DEFAULT 'assigned',
-          notes TEXT
-        )`
-      },
-      {
-        name: 'it_equipment',
-        sql: `CREATE TABLE it_equipment (
-          id SERIAL PRIMARY KEY,
-          name TEXT NOT NULL,
-          category TEXT NOT NULL,
-          total_quantity INTEGER,
-          assigned_quantity INTEGER DEFAULT 0,
-          model TEXT,
-          location TEXT,
-          date_acquired TEXT,
-          knox_id TEXT,
-          serial_number TEXT,
-          date_release TEXT,
-          remarks TEXT,
-          status TEXT DEFAULT 'available',
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )`
-      },
-      {
-        name: 'it_equipment_assignments',
-        sql: `CREATE TABLE it_equipment_assignments (
-          id SERIAL PRIMARY KEY,
-          equipment_id INTEGER NOT NULL,
-          assigned_to TEXT NOT NULL,
-          knox_id TEXT,
-          serial_number TEXT,
-          quantity INTEGER NOT NULL DEFAULT 1,
-          assigned_date TEXT NOT NULL,
-          returned_date TEXT,
-          status TEXT NOT NULL DEFAULT 'assigned',
-          notes TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )`
-      }
-    ];
-
-    for (const table of essentialTables) {
-      if (!(await tableExists(table.name))) {
-        await db.execute(sql.raw(table.sql));
-        console.log(`✅ ${table.name} table created`);
-      }
-    }
-
-    // Create license assignments table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS license_assignments (
-        id SERIAL PRIMARY KEY,
-        license_id INTEGER REFERENCES licenses(id) NOT NULL,
-        assigned_to TEXT NOT NULL,
-        notes TEXT,
-        assigned_date TEXT NOT NULL
-      )
-    `);
-    console.log("✅ License assignments table created/verified");
-
-    // Create consumable assignments table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS consumable_assignments (
-        id SERIAL PRIMARY KEY,
-        consumable_id INTEGER REFERENCES consumables(id) NOT NULL,
-        assigned_to TEXT NOT NULL,
-        serial_number TEXT,
-        knox_id TEXT,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        assigned_date TEXT NOT NULL,
-        returned_date TEXT,
-        status TEXT NOT NULL DEFAULT 'assigned',
-        notes TEXT
-      )
-    `);
-    console.log("✅ Consumable assignments table created/verified");
-
-    // Create activities table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS activities (
-        id SERIAL PRIMARY KEY,
-        action TEXT NOT NULL,
-        item_type TEXT NOT NULL,
-        item_id INTEGER NOT NULL,
-        user_id INTEGER REFERENCES users(id),
-        timestamp TEXT NOT NULL,
-        notes TEXT
-      )
-    `);
-    console.log("✅ Activities table created/verified");
-
-    // Create VM and monitoring tables with verification
-    if (!(await tableExists('vm_inventory'))) {
-      await db.execute(sql`
-        CREATE TABLE vm_inventory (
-          id SERIAL PRIMARY KEY,
-
-          -- Core VM Information
-          vm_id TEXT,
-          vm_name TEXT NOT NULL,
-          vm_status TEXT NOT NULL DEFAULT 'Active',
-          vm_ip TEXT,
-          vm_os TEXT,
-          cpu_count INTEGER DEFAULT 0,
-          memory_gb INTEGER DEFAULT 0,
-          disk_capacity_gb INTEGER DEFAULT 0,
-
-          -- Request and Approval Information
-          requestor TEXT,
-          knox_id TEXT,
-          department TEXT,
-          start_date TEXT,
-          end_date TEXT,
-          jira_number TEXT,
-          approval_number TEXT,
-          remarks TEXT,
-
-          -- Legacy compatibility fields
-          internet_access BOOLEAN DEFAULT FALSE,
-          vm_os_version TEXT,
-          hypervisor TEXT,
-          host_name TEXT,
-          host_model TEXT,
-          host_ip TEXT,
-          host_os TEXT,
-          rack TEXT,
-          deployed_by TEXT,
-          "user" TEXT,
-          jira_ticket TEXT,
-          date_deleted TEXT,
-          guest_os TEXT,
-          power_state TEXT,
-          memory_mb INTEGER,
-          disk_gb INTEGER,
-          ip_address TEXT,
-          mac_address TEXT,
-          vmware_tools TEXT,
-          cluster TEXT,
-          datastore TEXT,
-          status TEXT DEFAULT 'available',
-          assigned_to INTEGER,
-          location TEXT,
-          serial_number TEXT,
-          model TEXT,
-          manufacturer TEXT,
-          purchase_date TEXT,
-          purchase_cost TEXT,
-          created_date TEXT DEFAULT CURRENT_TIMESTAMP,
-          last_modified TEXT DEFAULT CURRENT_TIMESTAMP,
-          notes TEXT
-        )
-      `);
-      console.log("✅ VM inventory table created with all required columns");
-    } else {
-      console.log("✅ VM inventory table exists - verifying columns");
-    }
-
-    // Check and add missing columns to existing VM inventory table
-    await addMissingVMInventoryColumns();
-
-    // Create VMs table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS vms (
-        id SERIAL PRIMARY KEY,
-        vm_name TEXT NOT NULL,
-        host_name TEXT NOT NULL,
-        guest_os TEXT NOT NULL,
-        power_state TEXT NOT NULL DEFAULT 'stopped',
-        cpu_count INTEGER DEFAULT 1,
-        memory_mb INTEGER DEFAULT 1024,
-        disk_gb INTEGER DEFAULT 20,
-        ip_address TEXT,
-        mac_address TEXT,
-        vmware_tools TEXT,
-        cluster TEXT,
-        datastore TEXT,
-        status TEXT NOT NULL DEFAULT 'available',
-        assigned_to INTEGER REFERENCES users(id),
-        location TEXT,
-        serial_number TEXT,
-        model TEXT,
-        manufacturer TEXT,
-        purchase_date TEXT,
-        purchase_cost TEXT,
-        department TEXT,
-        description TEXT,
-        created_date TEXT DEFAULT CURRENT_TIMESTAMP,
-        last_modified TEXT DEFAULT CURRENT_TIMESTAMP,
-        notes TEXT
-      )
-    `);
-    console.log("✅ VMs table created/verified");
-
-    // Create IT Equipment table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS it_equipment (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        total_quantity INTEGER,
-        assigned_quantity INTEGER DEFAULT 0,
-        model TEXT,
-        location TEXT,
-        date_acquired TEXT,
-        knox_id TEXT,
-        serial_number TEXT,
-        date_release TEXT,
-        remarks TEXT,
-        status TEXT DEFAULT 'available',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("✅ IT Equipment table created/verified");
-
-    // Create IT Equipment Assignments table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS it_equipment_assignments (
-        id SERIAL PRIMARY KEY,
-        equipment_id INTEGER REFERENCES it_equipment(id) NOT NULL,
-        assigned_to TEXT NOT NULL,
-        knox_id TEXT,
-        serial_number TEXT,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        assigned_date TEXT NOT NULL,
-        returned_date TEXT,
-        status TEXT NOT NULL DEFAULT 'assigned',
-        notes TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("✅ IT Equipment Assignments table created/verified");
-
-    // Verify system and monitoring tables
-    const systemTables = [
-      {
-        name: 'system_settings',
-        sql: `CREATE TABLE system_settings (
-          id SERIAL PRIMARY KEY,
-          site_name TEXT NOT NULL DEFAULT 'SRPH-MIS',
-          site_url TEXT NOT NULL DEFAULT '',
-          default_language TEXT NOT NULL DEFAULT 'en',
-          default_timezone TEXT NOT NULL DEFAULT 'UTC',
-          allow_public_registration BOOLEAN DEFAULT FALSE,
-          company_name TEXT NOT NULL DEFAULT 'SRPH',
-          company_address TEXT DEFAULT '',
-          company_phone TEXT DEFAULT '',
-          company_email TEXT DEFAULT '',
-          company_logo TEXT DEFAULT '',
-          mail_driver TEXT DEFAULT '',
-          mail_host TEXT DEFAULT '',
-          mail_port TEXT DEFAULT '',
-          mail_username TEXT DEFAULT '',
-          mail_password TEXT DEFAULT '',
-          mail_from_address TEXT DEFAULT '',
-          mail_from_name TEXT DEFAULT '',
-          asset_tag_prefix TEXT DEFAULT 'SRPH',
-          asset_tag_zeros INTEGER DEFAULT 5,
-          asset_auto_increment BOOLEAN DEFAULT TRUE,
-          asset_checkout_policy TEXT DEFAULT '',
-          asset_checkout_duration INTEGER DEFAULT 30,
-          session_timeout INTEGER DEFAULT 120,
-          enable_login_attempts BOOLEAN DEFAULT TRUE,
-          max_login_attempts INTEGER DEFAULT 5,
-          lockout_duration INTEGER DEFAULT 30,
-          password_min_length INTEGER DEFAULT 8,
-          require_special_char BOOLEAN DEFAULT TRUE,
-          require_uppercase BOOLEAN DEFAULT TRUE,
-          require_number BOOLEAN DEFAULT TRUE,
-          password_expiry_days INTEGER DEFAULT 90,
-          enable_admin_notifications BOOLEAN DEFAULT TRUE,
-          enable_user_notifications BOOLEAN DEFAULT TRUE,
-          notify_on_checkout BOOLEAN DEFAULT TRUE,
-          notify_on_checkin BOOLEAN DEFAULT TRUE,
-          notify_on_overdue BOOLEAN DEFAULT TRUE,
-          notify_on_iam_expiration BOOLEAN DEFAULT TRUE,
-          notify_on_vm_expiration BOOLEAN DEFAULT TRUE,
-          automatic_backups BOOLEAN DEFAULT FALSE,
-          backup_frequency TEXT DEFAULT 'daily',
-          backup_time TEXT DEFAULT '00:00',
-          backup_retention INTEGER DEFAULT 30,
-          maintenance_mode BOOLEAN DEFAULT FALSE,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`
-      },
-      {
-        name: 'vms',
-        sql: `CREATE TABLE vms (
-          id SERIAL PRIMARY KEY,
-          vm_name TEXT NOT NULL,
-          host_name TEXT NOT NULL,
-          guest_os TEXT NOT NULL,
-          power_state TEXT NOT NULL DEFAULT 'stopped',
-          cpu_count INTEGER DEFAULT 1,
-          memory_mb INTEGER DEFAULT 1024,
-          disk_gb INTEGER DEFAULT 20,
-          ip_address TEXT,
-          mac_address TEXT,
-          vmware_tools TEXT,
-          cluster TEXT,
-          datastore TEXT,
-          status TEXT NOT NULL DEFAULT 'available',
-          assigned_to INTEGER,
-          location TEXT,
-          serial_number TEXT,
-          model TEXT,
-          manufacturer TEXT,
-          purchase_date TEXT,
-          purchase_cost TEXT,
-          department TEXT,
-          description TEXT,
-          created_date TEXT DEFAULT CURRENT_TIMESTAMP,
-          last_modified TEXT DEFAULT CURRENT_TIMESTAMP,
-          notes TEXT
-        )`
-      },
-      {
-        name: 'zabbix_settings',
-        sql: `CREATE TABLE zabbix_settings (
-          id SERIAL PRIMARY KEY,
-          server_url TEXT NOT NULL DEFAULT '',
-          username TEXT NOT NULL DEFAULT '',
-          password TEXT NOT NULL DEFAULT '',
-          api_token TEXT DEFAULT '',
-          last_sync TIMESTAMP,
-          sync_interval INTEGER DEFAULT 30,
-          enabled BOOLEAN DEFAULT FALSE,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`
-      },
-      {
-        name: 'discovered_hosts',
-        sql: `CREATE TABLE discovered_hosts (
-          id SERIAL PRIMARY KEY,
-          hostname TEXT,
-          ip_address TEXT NOT NULL,
-          mac_address TEXT,
-          status TEXT NOT NULL DEFAULT 'new',
-          last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          source TEXT NOT NULL DEFAULT 'zabbix',
-          system_info JSON DEFAULT '{}',
-          hardware_details JSON DEFAULT '{}',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`
-      },
-      {
-        name: 'vm_monitoring',
-        sql: `CREATE TABLE vm_monitoring (
-          id SERIAL PRIMARY KEY,
-          vm_id INTEGER NOT NULL,
-          hostname TEXT,
-          ip_address TEXT,
-          status TEXT,
-          cpu_usage REAL,
-          memory_usage REAL,
-          disk_usage REAL,
-          uptime INTEGER,
-          network_status TEXT,
-          os_name TEXT,
-          cpu_cores INTEGER,
-          total_memory BIGINT,
-          total_disk BIGINT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )`
-      }
-    ];
-
-    for (const table of systemTables) {
-      if (!(await tableExists(table.name))) {
-        await db.execute(sql.raw(table.sql));
-        console.log(`✅ ${table.name} table created`);
-      }
-    }
-
-    // Create monitoring tables
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS monitoring_dashboards (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        is_public BOOLEAN DEFAULT FALSE,
-        refresh_interval INTEGER DEFAULT 30,
-        tags TEXT,
-        user_id INTEGER REFERENCES users(id),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS monitoring_panels (
-        id SERIAL PRIMARY KEY,
-        dashboard_id INTEGER NOT NULL REFERENCES monitoring_dashboards(id) ON DELETE CASCADE,
-        title TEXT NOT NULL,
-        type TEXT NOT NULL,
-        datasource TEXT NOT NULL,
-        query TEXT NOT NULL,
-        refresh_interval INTEGER DEFAULT 30,
-        width INTEGER DEFAULT 6,
-        height INTEGER DEFAULT 300,
-        x_pos INTEGER DEFAULT 0,
-        y_pos INTEGER DEFAULT 0,
-        thresholds TEXT,
-        unit TEXT,
-        decimals INTEGER DEFAULT 2,
-        show_legend BOOLEAN DEFAULT TRUE,
-        color_scheme TEXT DEFAULT 'default',
-        config TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS monitoring_datasources (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        url TEXT NOT NULL,
-        access TEXT DEFAULT 'proxy',
-        basic_auth BOOLEAN DEFAULT FALSE,
-        basic_auth_user TEXT,
-        basic_auth_password TEXT,
-        database TEXT,
-        json_data TEXT,
-        secure_json_fields TEXT,
-        is_default BOOLEAN DEFAULT FALSE,
-        status TEXT DEFAULT 'pending',
-        last_check TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS monitoring_alert_rules (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        datasource TEXT NOT NULL,
-        query TEXT NOT NULL,
-        condition TEXT NOT NULL,
-        threshold REAL NOT NULL,
-        evaluation_interval INTEGER DEFAULT 60,
-        for_duration INTEGER DEFAULT 300,
-        severity TEXT DEFAULT 'medium',
-        enabled BOOLEAN DEFAULT TRUE,
-        notification_channels TEXT,
-        annotations TEXT,
-        labels TEXT,
-        state TEXT DEFAULT 'normal',
-        last_evaluation TEXT,
-        error TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS monitoring_alerts (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        datasource TEXT NOT NULL,
-        query TEXT NOT NULL,
-        condition TEXT NOT NULL,
-        threshold REAL NOT NULL,
-        evaluation_interval INTEGER DEFAULT 60,
-        for_duration INTEGER DEFAULT 300,
-        severity TEXT DEFAULT 'medium',
-        enabled BOOLEAN DEFAULT TRUE,
-        notification_channels TEXT,
-        annotations TEXT,
-        labels TEXT,
-        state TEXT DEFAULT 'normal',
-        last_evaluation TEXT,
-        error TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS monitoring_notifications (
-        id SERIAL PRIMARY KEY,
-        alert_id INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        recipient TEXT NOT NULL,
-        message TEXT NOT NULL,
-        status TEXT DEFAULT 'pending',
-        sent_at TEXT,
-        error TEXT,
-        created_at TEXT NOT NULL
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS notifications (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id),
-        title TEXT NOT NULL,
-        message TEXT NOT NULL,
-        type TEXT DEFAULT 'info',
-        read BOOLEAN DEFAULT FALSE,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    console.log("✅ Monitoring tables created/verified");
-
-    // Create Zabbix and network discovery tables
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS zabbix_settings (
-        id SERIAL PRIMARY KEY,
-        server_url TEXT NOT NULL DEFAULT '',
-        username TEXT NOT NULL DEFAULT '',
-        password TEXT NOT NULL DEFAULT '',
-        api_token TEXT DEFAULT '',
-        last_sync TIMESTAMP,
-        sync_interval INTEGER DEFAULT 30,
-        enabled BOOLEAN DEFAULT FALSE,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS zabbix_subnets (
-        id SERIAL PRIMARY KEY,
-        cidr_range TEXT NOT NULL,
-        description TEXT,
-        enabled BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS discovered_hosts (
-        id SERIAL PRIMARY KEY,
-        hostname TEXT,
-        ip_address TEXT NOT NULL,
-        mac_address TEXT,
-        status TEXT NOT NULL DEFAULT 'new',
-        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        source TEXT NOT NULL DEFAULT 'zabbix',
-        system_info JSON DEFAULT '{}',
-        hardware_details JSON DEFAULT '{}',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS vm_monitoring (
-        id SERIAL PRIMARY KEY,
-        vm_id INTEGER NOT NULL,
-        hostname TEXT,
-        ip_address TEXT,
-        status TEXT,
-        cpu_usage REAL,
-        memory_usage REAL,
-        disk_usage REAL,
-        uptime INTEGER,
-        network_status TEXT,
-        os_name TEXT,
-        cpu_cores INTEGER,
-        total_memory BIGINT,
-        total_disk BIGINT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-
-    console.log("✅ Zabbix and network discovery tables created/verified");
-
-    // Create JIRA settings table
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS jira_settings (
-        id SERIAL PRIMARY KEY,
-        settings TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("✅ JIRA settings table created/verified");
-
-    // Insert default admin user if it doesn't exist
-    const adminCheck = await db.execute(sql`
-      SELECT COUNT(*) as count FROM users WHERE username = 'admin'
-    `);
-
-    if (adminCheck.rows[0].count === 0) {
-      const { scrypt, randomBytes } = await import('crypto');
-      const { promisify } = await import('util');
-      const scryptAsync = promisify(scrypt);
-
-      const salt = randomBytes(16).toString("hex");
-      const buf = (await scryptAsync('admin123', salt, 64)) as Buffer;
-      const hashedPassword = `${buf.toString("hex")}.${salt}`;
-
-      await db.execute(sql`
-        INSERT INTO users (username, password, first_name, last_name, email, is_admin)
-        VALUES ('admin', ${hashedPassword}, 'System', 'Administrator', 'admin@example.com', true)
-      `);
-      console.log("✅ Default admin user created");
-    }
-
-    // Insert default system settings if not exists
-    try {
-      // Insert default email notification settings if they don't exist
-      const [existingSettings] = await db.select().from(systemSettings).limit(1);
-
-      if (!existingSettings) {
-        console.log('Creating default system settings...');
-        await db.insert(systemSettings).values({
-          siteName: "SRPH-MIS",
-          siteUrl: "",
-          defaultLanguage: "en",
-          defaultTimezone: "UTC",
-          allowPublicRegistration: false,
-          companyName: "SRPH",
-          companyAddress: "",
-          companyPhone: "",
-          companyEmail: "",
-          companyLogo: "",
-          assetTagPrefix: "SRPH",
-          assetTagZeros: 5,
-          assetAutoIncrement: true,
-          sessionTimeout: 120,
-          enableLoginAttempts: true,
-          maxLoginAttempts: 5,
-          lockoutDuration: 30,
-          passwordMinLength: 8,
-          requireSpecialChar: true,
-          requireUppercase: true,
-          requireNumber: true,
-          passwordExpiryDays: 90,
-          enableAdminNotifications: true,
-          enableUserNotifications: true,
-          notifyOnCheckout: true,
-          notifyOnCheckin: true,
-          notifyOnOverdue: true,
-          notifyOnIamExpiration: true,
-          notifyOnVmExpiration: true,
-          automaticBackups: false,
-          backupFrequency: "daily",
-          backupTime: "00:00",
-          backupRetention: 30,
-          maintenanceMode: false
+        const response = await fetch('/api/it-equipment', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(data),
         });
-        console.log('✅ Default system settings created with email notifications enabled');
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Failed to create IT equipment');
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error('Error creating IT equipment:', error);
+        throw error;
+      }
+    },
+    onSuccess: (data) => {
+      setIsDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/it-equipment'] });
+
+      // Send email notification
+      fetch('/api/send-modification-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'created',
+          itemType: 'IT Equipment',
+          itemName: data.assetTag || data.serialNumber || 'New Equipment',
+          details: `IT Equipment created: ${data.assetTag || 'N/A'}, Type: ${data.type || 'N/A'}, Model: ${data.model || 'N/A'}`
+        })
+      }).catch(err => console.error('Failed to send email notification:', err));
+
+      toast({
+        title: "Equipment added",
+        description: "The IT equipment has been added successfully. Email notification sent.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "There was an error adding the equipment. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleEquipmentSubmit = (data: any) => {
+    createMutation.mutate(data);
+  };
+
+  // Assignment mutation
+  const assignmentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await fetch(`/api/it-equipment/${selectedForAssignment?.id}/assign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to assign equipment');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      setIsAssignDialogOpen(false);
+      setSelectedForAssignment(null);
+      setAssignmentData({ assignedTo: '', quantity: 1, knoxId: '', serialNumber: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/it-equipment'] });
+      toast({
+        title: "Success",
+        description: "Equipment has been assigned successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Assignment error:', error);
+      toast({
+        title: "Assignment Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleAssignEquipment = (equipment: any) => {
+    setSelectedForAssignment(equipment);
+    setAssignmentData({ 
+      assignedTo: '', 
+      quantity: 1, 
+      knoxId: '', 
+      serialNumber: '', 
+      notes: '' 
+    });
+    setIsAssignDialogOpen(true);
+  };
+
+  const handleAssignmentSubmit = () => {
+    if (!assignmentData.assignedTo.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter who the equipment is assigned to.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const availableQuantity = (selectedForAssignment?.totalQuantity || 0) - (selectedForAssignment?.assignedQuantity || 0);
+
+    if (assignmentData.quantity <= 0 || assignmentData.quantity > availableQuantity) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid quantity.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    assignmentMutation.mutate(assignmentData);
+  };
+
+  const handleExportCSV = async () => {
+    if (equipment && equipment.length > 0) {
+      try {
+        // Fetch assignment data for all equipment
+        const equipmentWithAssignments = await Promise.all(
+          equipment.map(async (item) => {
+            try {
+              const response = await fetch(`/api/it-equipment/${item.id}/assignments`);
+              const assignments = response.ok ? await response.json() : [];
+
+              // If there are assignments, create multiple rows (one per assignment)
+              if (assignments && assignments.length > 0) {
+                return assignments.map((assignment: any) => ({
+                  name: item.name,
+                  category: item.category,
+                  totalQuantity: item.totalQuantity,
+                  model: item.model || '',
+                  location: item.location || '',
+                  dateAcquired: item.dateAcquired || '',
+                  knoxId: item.knoxId || '',
+                  serialNumber: item.serialNumber || '',
+                  dateRelease: item.dateRelease || '',
+                  remarks: item.remarks || '',
+                  status: item.status,
+                  assignedTo: assignment.assignedTo || '',
+                  assignedQuantity: assignment.quantity || '',
+                  assignedDate: assignment.assignedDate || '',
+                  assignmentKnoxId: assignment.knoxId || '',
+                  assignmentSerialNumber: assignment.serialNumber || '',
+                  assignmentNotes: assignment.notes || ''
+                }));
+              } else {
+                // No assignments, return equipment with empty assignment fields
+                return [{
+                  name: item.name,
+                  category: item.category,
+                  totalQuantity: item.totalQuantity,
+                  model: item.model || '',
+                  location: item.location || '',
+                  dateAcquired: item.dateAcquired || '',
+                  knoxId: item.knoxId || '',
+                  serialNumber: item.serialNumber || '',
+                  dateRelease: item.dateRelease || '',
+                  remarks: item.remarks || '',
+                  status: item.status,
+                  assignedTo: '',
+                  assignedQuantity: '',
+                  assignedDate: '',
+                  assignmentKnoxId: '',
+                  assignmentSerialNumber: '',
+                  assignmentNotes: ''
+                }];
+              }
+            } catch (error) {
+              console.error(`Error fetching assignments for equipment ${item.id}:`, error);
+              return [{
+                name: item.name,
+                category: item.category,
+                totalQuantity: item.totalQuantity,
+                model: item.model || '',
+                location: item.location || '',
+                dateAcquired: item.dateAcquired || '',
+                knoxId: item.knoxId || '',
+                serialNumber: item.serialNumber || '',
+                dateRelease: item.dateRelease || '',
+                remarks: item.remarks || '',
+                status: item.status,
+                assignedTo: '',
+                assignedQuantity: '',
+                assignedDate: '',
+                assignmentKnoxId: '',
+                assignmentSerialNumber: '',
+                assignmentNotes: ''
+              }];
+            }
+          })
+        );
+
+        // Flatten the array of arrays
+        const csvData = equipmentWithAssignments.flat();
+        downloadCSV(csvData, 'it_equipment_with_assignments.csv');
+
+        toast({
+          title: "Export successful",
+          description: `Exported ${csvData.length} records including assignment data.`,
+        });
+      } catch (error) {
+        console.error('Export error:', error);
+        toast({
+          title: "Export failed",
+          description: "Failed to export IT equipment data with assignments.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "No data to export",
+        description: "There is no IT equipment data to export.",
+      });
+    }
+  };
+
+  const handleSelectEquipment = (equipmentId: string, checked: boolean) => {
+    setSelectedEquipment((prevSelected) => {
+      if (checked) {
+        return [...prevSelected, equipmentId];
       } else {
-        // Update existing settings to ensure notification fields exist and are all ON by default
-        console.log('Updating existing settings to ensure all notification fields are present and enabled...');
-        const updateData: any = {};
-        
-        // Always set to true to ensure all notifications are ON
-        updateData.enableAdminNotifications = true;
-        updateData.notifyOnCheckin = true;
-        updateData.notifyOnCheckout = true;
-        updateData.notifyOnIamExpiration = true;
-        updateData.notifyOnVmExpiration = true;
-        updateData.notifyOnItEquipmentChanges = true;
-        updateData.notifyOnUserChanges = true;
-        updateData.notifyOnVmInventoryChanges = true;
-        updateData.notifyOnIamAccountChanges = true;
-        updateData.notifyOnGcpChanges = true;
-        updateData.notifyOnAzureChanges = true;
-        if (existingSettings.enableAdminNotifications === null || existingSettings.enableAdminNotifications === undefined) {
-          updateData.enableAdminNotifications = true;
-        }
-        if (existingSettings.notifyOnCheckout === null || existingSettings.notifyOnCheckout === undefined) {
-          updateData.notifyOnCheckout = true;
-        }
-        if (existingSettings.notifyOnCheckin === null || existingSettings.notifyOnCheckin === undefined) {
-          updateData.notifyOnCheckin = true;
-        }
-        if (existingSettings.sessionTimeout === null || existingSettings.sessionTimeout === undefined) {
-          updateData.sessionTimeout = 120;
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          await db.update(systemSettings)
-            .set(updateData)
-            .where(eq(systemSettings.id, existingSettings.id));
-          console.log('✅ System settings updated with all notification defaults set to ON');
-        } else {
-          console.log('✅ System settings already have all required fields');
-        }
+        return prevSelected.filter((id) => id !== equipmentId);
       }
-    } catch (settingsError: any) {
-      console.error("⚠️ Error checking/creating system settings:", settingsError.message);
-    }
+    });
+  };
 
-    // Create IAM Accounts table with proper column verification
-    if (!(await tableExists('iam_accounts'))) {
-      await db.execute(sql`
-        CREATE TABLE iam_accounts (
-          id SERIAL PRIMARY KEY,
-          requestor TEXT,
-          knox_id TEXT,
-          permission TEXT,
-          duration_start_date TEXT,
-          duration_end_date TEXT,
-          cloud_platform TEXT,
-          project_accounts TEXT,
-          approval_id TEXT,
-          remarks TEXT,
-          status TEXT DEFAULT 'active',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      console.log("✅ IAM Accounts table created");
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedEquipment(equipment.map((item) => String(item.id)));
     } else {
-      console.log("✅ IAM Accounts table exists - verifying columns");
-
-      // Verify all required columns exist
-      const iamAccountColumns = [
-        ['requestor', 'TEXT'],
-        ['knox_id', 'TEXT'],
-        ['permission', 'TEXT'],
-        ['duration_start_date', 'TEXT'],
-        ['duration_end_date', 'TEXT'],
-        ['cloud_platform', 'TEXT'],
-        ['project_accounts', 'TEXT'],
-        ['approval_id', 'TEXT'],
-        ['remarks', 'TEXT'],
-        ['status', 'TEXT DEFAULT \'active\''],
-        ['created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
-        ['updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP']
-      ];
-
-      for (const [columnName, definition] of iamAccountColumns) {
-        if (!(await columnExists('iam_accounts', columnName))) {
-          await addColumn('iam_accounts', columnName, definition);
-        }
-      }
+      setSelectedEquipment([]);
     }
+  };
 
-    // Create Azure Inventory table
-    if (!(await tableExists('azure_inventory'))) {
-      await db.execute(sql`
-        CREATE TABLE azure_inventory (
-          id SERIAL PRIMARY KEY,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL,
-          resource_group TEXT NOT NULL,
-          location TEXT NOT NULL,
-          subscriptions TEXT,
-          status TEXT NOT NULL DEFAULT 'active',
-          remarks TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )
-      `);
-      console.log("✅ Azure Inventory table created");
-    } else {
-      console.log("✅ Azure Inventory table exists - verifying columns");
-      const azureColumns = [
-        ['name', 'TEXT NOT NULL'],
-        ['type', 'TEXT NOT NULL'],
-        ['resource_group', 'TEXT NOT NULL'],
-        ['location', 'TEXT NOT NULL'],
-        ['subscriptions', 'TEXT'],
-        ['status', 'TEXT NOT NULL DEFAULT \'active\''],
-        ['remarks', 'TEXT'],
-        ['created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL'],
-        ['updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL']
-      ];
+  // Filter and paginate equipment
+  const filteredEquipment = useMemo(() => {
+    if (!equipment) return [];
 
-      for (const [columnName, definition] of azureColumns) {
-        if (!(await columnExists('azure_inventory', columnName))) {
-          await addColumn('azure_inventory', columnName, definition);
-        }
-      }
-    }
-
-    // Create GCP Inventory table
-    if (!(await tableExists('gcp_inventory'))) {
-      await db.execute(sql`
-        CREATE TABLE gcp_inventory (
-          id SERIAL PRIMARY KEY,
-          name TEXT NOT NULL,
-          resource_type TEXT NOT NULL,
-          project_id TEXT NOT NULL,
-          display_name TEXT NOT NULL,
-          location TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'active',
-          remarks TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )
-      `);
-      console.log("✅ GCP Inventory table created");
-    } else {
-      console.log("✅ GCP Inventory table exists - verifying columns");
-      const gcpColumns = [
-        ['name', 'TEXT NOT NULL'],
-        ['resource_type', 'TEXT NOT NULL'],
-        ['project_id', 'TEXT NOT NULL'],
-        ['display_name', 'TEXT NOT NULL'],
-        ['location', 'TEXT NOT NULL'],
-        ['status', 'TEXT NOT NULL DEFAULT \'active\''],
-        ['remarks', 'TEXT'],
-        ['created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL'],
-        ['updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL']
-      ];
-
-      for (const [columnName, definition] of gcpColumns) {
-        if (!(await columnExists('gcp_inventory', columnName))) {
-          await addColumn('gcp_inventory', columnName, definition);
-        }
-      }
-    }
-
-    // Create Azure Historical Data table
-    if (!(await tableExists('azure_historical_data'))) {
-      await db.execute(sql`
-        CREATE TABLE azure_historical_data (
-          id SERIAL PRIMARY KEY,
-          resource_id INTEGER,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL,
-          resource_group TEXT NOT NULL,
-          location TEXT NOT NULL,
-          subscriptions TEXT NOT NULL,
-          status TEXT NOT NULL,
-          remarks TEXT,
-          change_type TEXT NOT NULL,
-          month_year TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )
-      `);
-      console.log("✅ Azure Historical Data table created");
-    }
-
-    // Create GCP Historical Data table
-    if (!(await tableExists('gcp_historical_data'))) {
-      await db.execute(sql`
-        CREATE TABLE gcp_historical_data (
-          id SERIAL PRIMARY KEY,
-          resource_id INTEGER,
-          name TEXT NOT NULL,
-          resource_type TEXT NOT NULL,
-          project_id TEXT NOT NULL,
-          display_name TEXT NOT NULL,
-          location TEXT NOT NULL,
-          status TEXT NOT NULL,
-          remarks TEXT,
-          change_type TEXT NOT NULL,
-          month_year TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-        )
-      `);
-      console.log("✅ GCP Historical Data table created");
-    }
-
-    // Create VM approval history table if it doesn't exist
-    const vmApprovalHistoryTableExists = await db.execute(sql`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'vm_approval_history'
+    return equipment.filter((item) => {
+      const searchLower = searchQuery.toLowerCase();
+      return (
+        item.name?.toLowerCase().includes(searchLower) ||
+        item.category?.toLowerCase().includes(searchLower) ||
+        item.model?.toLowerCase().includes(searchLower) ||
+        item.location?.toLowerCase().includes(searchLower) ||
+        item.knoxId?.toLowerCase().includes(searchLower) ||
+        item.serialNumber?.toLowerCase().includes(searchLower)
       );
-    `);
+    });
+  }, [equipment, searchQuery]);
 
-    if (!vmApprovalHistoryTableExists.rows[0]?.exists) {
-      await db.execute(sql`
-        CREATE TABLE vm_approval_history (
-          id SERIAL PRIMARY KEY,
-          vm_id INTEGER NOT NULL REFERENCES vm_inventory(id) ON DELETE CASCADE,
-          old_approval_number TEXT,
-          new_approval_number TEXT,
-          changed_by INTEGER REFERENCES users(id),
-          changed_at TIMESTAMP DEFAULT NOW() NOT NULL,
-          reason TEXT,
-          notes TEXT,
-          created_at TIMESTAMP DEFAULT NOW() NOT NULL
-        )
-      `);
-      console.log("✅ VM approval history table created");
-    } else {
-      console.log("✅ VM approval history table exists");
-    }
+  const totalPages = Math.ceil(filteredEquipment.length / itemsPerPage);
+  const paginatedEquipment = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredEquipment.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredEquipment, currentPage, itemsPerPage]);
 
-    // Create VM inventory table if it doesn't exist
-    const vmInventoryTableExists = await db.execute(sql`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'vm_inventory'
-      );
-    `);
+  // Reset to page 1 when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
 
-    if (!vmInventoryTableExists.rows[0]?.exists) {
-      await db.execute(sql`
-        CREATE TABLE vm_inventory (
-          id SERIAL PRIMARY KEY,
-
-          -- Core VM Information
-          vm_id TEXT,
-          vm_name TEXT NOT NULL,
-          vm_status TEXT NOT NULL DEFAULT 'Active',
-          vm_ip TEXT,
-          vm_os TEXT,
-          cpu_count INTEGER DEFAULT 0,
-          memory_gb INTEGER DEFAULT 0,
-          disk_capacity_gb INTEGER DEFAULT 0,
-
-          -- Request and Approval Information
-          requestor TEXT,
-          knox_id TEXT,
-          department TEXT,
-          start_date TEXT,
-          end_date TEXT,
-          jira_number TEXT,
-          approval_number TEXT,
-          remarks TEXT,
-
-          -- Legacy compatibility fields
-          internet_access BOOLEAN DEFAULT FALSE,
-          vm_os_version TEXT,
-          hypervisor TEXT,
-          host_name TEXT,
-          host_model TEXT,
-          host_ip TEXT,
-          host_os TEXT,
-          rack TEXT,
-          deployed_by TEXT,
-          "user" TEXT,
-          jira_ticket TEXT,
-          date_deleted TEXT,
-          guest_os TEXT,
-          power_state TEXT,
-          memory_mb INTEGER,
-          disk_gb INTEGER,
-          ip_address TEXT,
-          mac_address TEXT,
-          vmware_tools TEXT,
-          cluster TEXT,
-          datastore TEXT,
-          status TEXT DEFAULT 'available',
-          assigned_to INTEGER,
-          location TEXT,
-          serial_number TEXT,
-          model TEXT,
-          manufacturer TEXT,
-          purchase_date TEXT,
-          purchase_cost TEXT,
-          created_date TEXT DEFAULT CURRENT_TIMESTAMP,
-          last_modified TEXT DEFAULT CURRENT_TIMESTAMP,
-          notes TEXT
-        )
-      `);
-      console.log("✅ VM inventory table created with all required columns");
-    } else {
-      console.log("✅ VM inventory table exists - verifying columns");
-    }
-
-    // Final comprehensive verification
-    const allTables = [
-      'users', 'assets', 'components', 'accessories', 'consumables', 'licenses',
-      'license_assignments', 'consumable_assignments', 'activities', 'vm_inventory',
-      'vms', 'monitor_inventory', 'bitlocker_keys', 'it_equipment', 'it_equipment_assignments',
-      'system_settings', 'zabbix_settings', 'discovered_hosts', 'vm_monitoring',
-      'monitoring_dashboards', 'monitoring_panels', 'monitoring_datasources', 
-      'monitoring_alert_rules', 'monitoring_alerts', 'monitoring_notifications', 'iam_accounts', 
-      'vm_approval_history', 'azure_inventory', 'gcp_inventory'
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        name: "Sample Laptop",
+        category: "Laptop",
+        totalQuantity: "10",
+        model: "ThinkPad X1 Carbon",
+        location: "Head Office - Room 201",
+        dateAcquired: "2023-01-15",
+        knoxId: "KNOX001",
+        serialNumber: "SN123456789",
+        dateRelease: "",
+        remarks: "High-performance laptop for development work",
+        status: "available",
+        assignedTo: "John Doe",
+        assignedQuantity: "1",
+        assignedDate: "2023-01-20",
+        assignmentKnoxId: "KNOX-JD-001",
+        assignmentSerialNumber: "SN123456789-JD",
+        assignmentNotes: "For development tasks"
+      },
+      {
+        name: "Sample Desktop",
+        category: "Desktop",
+        totalQuantity: "5",
+        model: "OptiPlex 7090",
+        location: "Branch Office - Floor 3",
+        dateAcquired: "2023-02-10",
+        knoxId: "KNOX002",
+        serialNumber: "SN987654321",
+        dateRelease: "",
+        remarks: "Desktop computer for office productivity",
+        status: "available",
+        assignedTo: "Jane Smith",
+        assignedQuantity: "1",
+        assignedDate: "2023-02-15",
+        assignmentKnoxId: "KNOX-JS-002",
+        assignmentSerialNumber: "SN987654321-JS",
+        assignmentNotes: "For general office use"
+      }
     ];
 
-    console.log("📊 Final comprehensive table verification:");
-    let verifiedTables = 0;
-    let totalRecords = 0;
+    const csvContent = [
+      "name,category,totalQuantity,model,location,dateAcquired,knoxId,serialNumber,dateRelease,remarks,status,assignedTo,assignedQuantity,assignedDate,assignmentKnoxId,assignmentSerialNumber,assignmentNotes",
+      ...templateData.map(row => 
+        `"${row.name}",${row.category},${row.totalQuantity},"${row.model}","${row.location}",${row.dateAcquired},${row.knoxId},${row.serialNumber},${row.dateRelease},"${row.remarks}",${row.status},"${row.assignedTo}","${row.assignedQuantity}","${row.assignedDate}","${row.assignmentKnoxId}","${row.assignmentSerialNumber}","${row.assignmentNotes}"`
+      )
+    ].join('\n');
 
-    for (const tableName of allTables) {
-      try {
-        if (await tableExists(tableName)) {
-          const result = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM ${tableName}`));
-          const count = result.rows[0].count;
-          console.log(`   ✅ ${tableName}: ${count} records`);
-          verifiedTables++;
-          totalRecords += parseInt(count);
-        } else {
-          console.log(`   ❌ ${tableName}: Table missing`);
-        }
-      } catch (error) {
-        console.log(`   ⚠️ ${tableName}: Error checking - ${error.message}`);
-      }
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'it-equipment-import-template.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
 
-    console.log(`\n🎉 Database verification completed successfully!`);
-    console.log(`📊 Summary: ${verifiedTables}/${allTables.length} tables verified`);
-    console.log(`📈 Total records across all tables: ${totalRecords}`);
-    console.log(`🔄 All missing tables and columns have been created automatically`);
-
-    // Log next steps
-    if (verifiedTables < allTables.length) {
-      console.log(`\n⚠️ Some tables may need manual attention. Check the logs above.`);
-    }
-
-  } catch (error) {
-    console.error("❌ Migration failed:", error);
-    console.error("📍 Error details:", {
-      message: error.message,
-      code: error.code,
-      detail: error.detail
+    toast({
+      title: "Template Downloaded",
+      description: "IT Equipment import template has been downloaded successfully."
     });
-    throw error;
-  }
+  };
+
+  // Update IT equipment mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<ITEquipment> }) => {
+      const response = await fetch(`/api/it-equipment/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update IT equipment: ${errorText}`);
+      }
+
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/it-equipment'] });
+
+      // Send email notification
+      fetch('/api/send-modification-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'updated',
+          itemType: 'IT Equipment',
+          itemName: data.assetTag || data.serialNumber || 'Equipment',
+          details: `IT Equipment updated: ${data.assetTag || 'N/A'}, Status: ${data.status || 'N/A'}`
+        })
+      }).catch(err => console.error('Failed to send email notification:', err));
+
+      toast({
+        title: "Success",
+        description: "IT Equipment has been updated successfully"
+      });
+    }
+  });
+
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-800">IT Equipment</h1>
+          <p className="text-sm text-gray-600">Manage IT equipment inventory and assignments</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleExportCSV}>
+            <DownloadIcon className="mr-2 h-4 w-4" />
+            Export to CSV
+          </Button>
+          <Button variant="outline" onClick={handleDownloadTemplate}>
+            <FileDownIcon className="mr-2 h-4 w-4" />
+            Download Template
+          </Button>
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <UploadIcon className="mr-2 h-4 w-4" />
+                Import CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[95%] max-w-6xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Import IT Equipment from CSV</DialogTitle>
+                <DialogDescription>
+                  Upload a CSV file to bulk import IT equipment data
+                </DialogDescription>
+              </DialogHeader>
+              <ITEquipmentCSVImport onImportComplete={() => setIsImportDialogOpen(false)} />
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <PlusIcon className="mr-2 h-4 w-4" />
+                Add Equipment
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[95%] max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add IT Equipment</DialogTitle>
+                <DialogDescription>
+                  Enter the details for the IT equipment
+                </DialogDescription>
+              </DialogHeader>
+              <ITEquipmentForm 
+                onSubmit={handleEquipmentSubmit} 
+                isLoading={createMutation.isPending} 
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>IT Equipment Management</CardTitle>
+          <CardDescription>Track and manage IT equipment inventory and assignments</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by name, category, model, location, Knox ID, or serial number..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {searchQuery && (
+              <p className="text-sm text-gray-600 mt-2">
+                Found {filteredEquipment.length} result{filteredEquipment.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+            </div>
+          ) : equipment && equipment.length > 0 ? (
+            <>
+              <div className="space-y-4">
+                {/* Select All and Bulk Actions */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={selectedEquipment.length === filteredEquipment.length && filteredEquipment.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                    <span className="text-sm font-medium">
+                      {selectedEquipment.length > 0 
+                        ? `${selectedEquipment.length} selected` 
+                        : 'Select All'}
+                    </span>
+                  </div>
+                  <Button variant="destructive" size="sm" disabled={selectedEquipment.length === 0}>
+                    <Trash2Icon className="h-4 w-4 mr-2" />
+                    Delete Selected ({selectedEquipment.length})
+                  </Button>
+                </div>
+
+                {/* Equipment Grid */}
+                {paginatedEquipment.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {paginatedEquipment.map((item) => {
+                      const totalQuantity = item.totalQuantity || 0;
+                      const assignedQuantity = item.assignedQuantity || 0;
+                      const availableQuantity = totalQuantity - assignedQuantity;
+                      const isAvailable = availableQuantity > 0;
+                      const usagePercentage = totalQuantity > 0 ? (assignedQuantity / totalQuantity) * 100 : 0;
+
+                      return (
+                        <Card key={item.id} className="hover:shadow-lg transition-all duration-200 overflow-hidden">
+                          <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                {isAvailable && (
+                                  <Switch 
+                                    id={`equipment-${item.id}`}
+                                    checked={selectedEquipment.includes(item.id)}
+                                    onCheckedChange={(checked) => handleSelectEquipment(item.id, checked)}
+                                  />
+                                )}
+                                <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <MonitorIcon className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                  <CardTitle className="text-lg">{item.name}</CardTitle>
+                                  <CardDescription className="text-xs">{item.category}</CardDescription>
+                                </div>
+                              </div>
+                              <Badge 
+                                className={availableQuantity > 0 
+                                  ? 'bg-green-500 text-white' 
+                                  : 'bg-red-500 text-white'}
+                              >
+                                {availableQuantity > 0 ? 'Available' : 'Full'}
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pt-4 space-y-3">
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <p className="text-gray-500 text-xs">Model</p>
+                                <p className="font-medium truncate">{item.model || 'N/A'}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 text-xs">Location</p>
+                                <p className="font-medium truncate">{item.location || 'N/A'}</p>
+                              </div>
+                            </div>
+
+                            <Separator />
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-xs text-gray-600">
+                                <span>Usage</span>
+                                <span className="font-medium">{assignedQuantity} / {totalQuantity}</span>
+                              </div>
+                              <Progress value={usagePercentage} className="h-2" />
+                              <div className="flex justify-between text-xs">
+                                <span className="text-green-600 font-medium">{availableQuantity} available</span>
+                                {item.dateAcquired && (
+                                  <span className="text-gray-500">
+                                    <CalendarIcon className="h-3 w-3 inline mr-1" />
+                                    {formatDate(item.dateAcquired)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                              <Link href={`/it-equipment/${item.id}`} className="flex-1">
+                                <Button variant="outline" size="sm" className="w-full">
+                                  Details
+                                </Button>
+                              </Link>
+                              <Button 
+                                size="sm"
+                                className="flex-1 bg-green-600 hover:bg-green-700"
+                                onClick={() => handleAssignEquipment(item)}
+                                disabled={availableQuantity <= 0}
+                              >
+                                Assign
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="text-center py-10">
+                      <MonitorIcon className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-500">No equipment found matching your search.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-6 flex justify-center">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+
+                      {[...Array(totalPages)].map((_, index) => {
+                        const pageNumber = index + 1;
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          pageNumber === 1 ||
+                          pageNumber === totalPages ||
+                          (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1)
+                        ) {
+                          return (
+                            <PaginationItem key={pageNumber}>
+                              <PaginationLink
+                                onClick={() => setCurrentPage(pageNumber)}
+                                isActive={currentPage === pageNumber}
+                                className="cursor-pointer"
+                              >
+                                {pageNumber}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        } else if (
+                          pageNumber === currentPage - 2 ||
+                          pageNumber === currentPage + 2
+                        ) {
+                          return (
+                            <PaginationItem key={pageNumber}>
+                              <span className="px-4">...</span>
+                            </PaginationItem>
+                          );
+                        }
+                        return null;
+                      })}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-10">
+              <CheckCircleIcon className="h-16 w-16 mx-auto text-green-500 mb-4" />
+              <h3 className="text-lg font-medium mb-2">IT Equipment Management Ready</h3>
+              <p className="text-gray-500 mb-4">
+                Click the "Add Equipment" button above to start tracking your IT equipment.
+              </p>
+              <div className="flex justify-center">
+                <Link href="/">
+                  <Button variant="outline">Return to Dashboard</Button>
+                </Link>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Assignment Dialog */}
+      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Equipment</DialogTitle>
+            <DialogDescription>
+              Assign {selectedForAssignment?.name} to a user
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="assignedTo" className="text-sm font-medium">Assigned To *</label>
+              <Input
+                id="assignedTo"
+                value={assignmentData.assignedTo}
+                onChange={(e) => setAssignmentData({...assignmentData, assignedTo: e.target.value})}
+                placeholder="Enter name or Knox ID"
+              />
+            </div>
+            <div>
+              <label htmlFor="quantity" className="text-sm font-medium">Quantity *</label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                max={(selectedForAssignment?.totalQuantity || 0) - (selectedForAssignment?.assignedQuantity || 0)}
+                value={assignmentData.quantity}
+                onChange={(e) => setAssignmentData({...assignmentData, quantity: parseInt(e.target.value) || 1})}
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Available: {(selectedForAssignment?.totalQuantity || 0) - (selectedForAssignment?.assignedQuantity || 0)}
+              </p>
+            </div>
+            <div>
+              <label htmlFor="knoxId" className="text-sm font-medium">Knox ID</label>
+              <Input
+                id="knoxId"
+                value={assignmentData.knoxId}
+                onChange={(e) => setAssignmentData({...assignmentData, knoxId: e.target.value})}
+                placeholder="Enter Knox ID"
+              />
+            </div>
+            <div>
+              <label htmlFor="serialNumber" className="text-sm font-medium">Serial Number</label>
+              <Input
+                id="serialNumber"
+                value={assignmentData.serialNumber}
+                onChange={(e) => setAssignmentData({...assignmentData, serialNumber: e.target.value})}
+                placeholder="Enter serial number"
+              />
+            </div>
+            <div>
+              <label htmlFor="notes" className="text-sm font-medium">Notes</label>
+              <Textarea
+                id="notes"
+                value={assignmentData.notes}
+                onChange={(e) => setAssignmentData({...assignmentData, notes: e.target.value})}
+                placeholder="Additional notes (optional)"
+                rows={3}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsAssignDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignmentSubmit}
+              disabled={assignmentMutation.isPending || !assignmentData.assignedTo.trim()}
+            >
+              {assignmentMutation.isPending ? 'Assigning...' : 'Assign'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
