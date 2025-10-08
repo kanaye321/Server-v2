@@ -1904,6 +1904,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send email notification - await to ensure it's actually sent
       try {
         console.log(`📧 Attempting to send email notification for IT equipment update: ${equipment.name}`);
+        
+        // Log the email event regardless of success/failure
+        await logEmailEvent({
+          timestamp: new Date().toISOString(),
+          to: 'admin',
+          subject: `IT Equipment Update - ${equipment.name}`,
+          status: 'pending'
+        });
+        
         const emailSent = await emailService.sendModificationNotification({
           action: 'update',
           itemType: 'IT Equipment',
@@ -1912,13 +1921,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           details: `Equipment updated - Category: ${equipment.category}, Quantity: ${equipment.totalQuantity}`,
           timestamp: new Date().toISOString()
         });
+        
         if (emailSent) {
           console.log(`✅ Email notification sent successfully for IT equipment update: ${equipment.name}`);
+          await logEmailEvent({
+            timestamp: new Date().toISOString(),
+            to: 'admin',
+            subject: `IT Equipment Update - ${equipment.name}`,
+            status: 'success'
+          });
         } else {
           console.log(`⚠️ Email notification not sent - check email configuration`);
+          await logEmailEvent({
+            timestamp: new Date().toISOString(),
+            to: 'admin',
+            subject: `IT Equipment Update - ${equipment.name}`,
+            status: 'failed',
+            error: 'Email service returned false'
+          });
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('❌ Email notification failed:', err);
+        await logEmailEvent({
+          timestamp: new Date().toISOString(),
+          to: 'admin',
+          subject: `IT Equipment Update - ${equipment.name}`,
+          status: 'failed',
+          error: err.message || 'Unknown error'
+        });
       }
 
       res.json(equipment);
