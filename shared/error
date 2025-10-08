@@ -521,112 +521,25 @@ If you need to extend your access, please submit a new request through the prope
     timestamp: string;
   }) {
     try {
+      console.log(`\n📧 [EMAIL SERVICE] sendModificationNotification called`);
+      console.log(`   Item: ${data.itemType} - ${data.itemName}`);
+      console.log(`   Action: ${data.action}`);
+      
       const settings = await storage.getSystemSettings();
       
-      // Check if master notifications switch is enabled (default to TRUE - enabled)
-      if (settings?.enableAdminNotifications === false) {
-        console.log('📧 Email notifications are disabled in system settings (master switch OFF)');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'Email notifications disabled in system settings'
-        });
-        return false;
-      }
+      const companyEmail = settings?.companyEmail;
+      const mailHost = settings?.mailHost;
       
-      // Default to TRUE (enabled) for all notification types unless explicitly set to false
-      const itemTypeLower = data.itemType.toLowerCase();
-      
-      // Set defaults - everything is enabled unless explicitly disabled
-      const notifyOnItEquipment = settings?.notifyOnItEquipmentChanges !== false;
-      const notifyOnVm = settings?.notifyOnVmInventoryChanges !== false;
-      const notifyOnIam = settings?.notifyOnIamAccountChanges !== false;
-      const notifyOnAzure = settings?.notifyOnAzureChanges !== false;
-      const notifyOnGcp = settings?.notifyOnGcpChanges !== false;
-      const notifyOnUser = settings?.notifyOnUserChanges !== false;
-      
-      console.log(`📧 Checking notification settings for item type: ${itemTypeLower}`);
-      console.log(`📧 Notification flags (defaults to ENABLED):`, {
-        notifyOnItEquipment,
-        notifyOnVm,
-        notifyOnIam,
-        notifyOnAzure,
-        notifyOnGcp,
-        notifyOnUser
+      console.log(`   Settings loaded:`, {
+        companyEmail: companyEmail || 'NOT SET',
+        mailHost: mailHost || 'NOT SET',
+        mailConfigured: !!(companyEmail && mailHost)
       });
       
-      // Only block if explicitly disabled
-      if ((itemTypeLower.includes('it equipment') || itemTypeLower.includes('consumable')) && !notifyOnItEquipment) {
-        console.log('📧 IT Equipment/Consumable notifications are explicitly disabled');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'IT Equipment notifications disabled'
-        });
-        return false;
-      }
-      if (itemTypeLower.includes('vm') && !notifyOnVm) {
-        console.log('📧 VM Inventory notifications are explicitly disabled');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'VM Inventory notifications disabled'
-        });
-        return false;
-      }
-      if (itemTypeLower.includes('iam') && !notifyOnIam) {
-        console.log('📧 IAM Account notifications are explicitly disabled');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'IAM Account notifications disabled'
-        });
-        return false;
-      }
-      if (itemTypeLower.includes('azure') && !notifyOnAzure) {
-        console.log('📧 Azure notifications are explicitly disabled');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'Azure notifications disabled'
-        });
-        return false;
-      }
-      if (itemTypeLower.includes('gcp') && !notifyOnGcp) {
-        console.log('📧 GCP notifications are explicitly disabled');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'GCP notifications disabled'
-        });
-        return false;
-      }
-      if (itemTypeLower.includes('user') && !notifyOnUser) {
-        console.log('📧 User change notifications are explicitly disabled');
-        await logEmailEvent({
-          timestamp: new Date().toISOString(),
-          to: settings?.companyEmail || 'N/A',
-          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
-          status: 'failed',
-          error: 'User notifications disabled'
-        });
-        return false;
-      }
+      console.log('   ✅ All notifications are ALWAYS ON (preference checks removed)');
       
       if (!settings?.companyEmail) {
-        console.log('❌ No admin email configured for notifications');
+        console.log('   ❌ No admin email configured');
         await logEmailEvent({
           timestamp: new Date().toISOString(),
           to: 'N/A',
@@ -636,9 +549,22 @@ If you need to extend your access, please submit a new request through the prope
         });
         return false;
       }
+      
+      if (!settings?.mailHost) {
+        console.log('   ❌ No mail host configured');
+        await logEmailEvent({
+          timestamp: new Date().toISOString(),
+          to: settings.companyEmail,
+          subject: `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`,
+          status: 'failed',
+          error: 'No mail host configured'
+        });
+        return false;
+      }
 
-      console.log(`📧 Preparing to send email notification to: ${settings.companyEmail}`);
-      console.log(`📧 Notification type: ${data.action} - ${data.itemType}`);
+      console.log(`   ✅ Email configuration verified`);
+      console.log(`   📬 Sending to: ${settings.companyEmail}`);
+      console.log(`   📝 Subject: [SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`);
 
       const subject = `[SRPH-MIS] ${data.action.toUpperCase()} - ${data.itemType}`;
       
@@ -685,14 +611,16 @@ If you need to extend your access, please submit a new request through the prope
         </html>
       `;
 
+      console.log(`   📤 Calling sendEmail...`);
       const result = await this.sendEmail({
         to: settings.companyEmail,
         subject,
         html
       });
 
+      console.log(`   Result: ${result ? '✅ SUCCESS' : '❌ FAILED'}`);
+
       if (result) {
-        console.log(`✅ Email notification sent successfully to ${settings.companyEmail}`);
         await logEmailEvent({
           timestamp: new Date().toISOString(),
           to: settings.companyEmail,
@@ -701,7 +629,6 @@ If you need to extend your access, please submit a new request through the prope
           messageId: `modification-${data.itemType}-${Date.now()}`
         });
       } else {
-        console.log(`⚠️ Email notification failed to send`);
         await logEmailEvent({
           timestamp: new Date().toISOString(),
           to: settings.companyEmail,
