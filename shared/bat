@@ -1,0 +1,133 @@
+@echo off
+REM =============================
+REM manage_accounts.bat
+REM - Elevates itself if needed
+REM - Optionally modify an existing local user (rename, set password, set account type)
+REM - Creates a guest account with STANDARD (non-admin) privileges
+REM =============================
+
+:: ---------- Elevation check ----------
+>nul 2>&1 net session
+if %errorlevel% neq 0 (
+    echo Requesting administrator rights...
+    powershell -Command "Start-Process -FilePath '%~f0' -ArgumentList 'ELEV' -Verb RunAs"
+    exit /b
+)
+if "%1"=="ELEV" (shift)
+
+cls
+echo =============================
+echo Local account management tool
+echo =============================
+echo.
+
+:: ---------- Modify existing account (optional) ----------
+set "TARGET="
+set /p TARGET=Enter the local account name to modify (leave blank to skip): 
+if not "%TARGET%"=="" (
+    echo.
+    echo Actions for account "%TARGET%":
+    echo  1 - Rename account
+    echo  2 - Change password
+    echo  3 - Change account type (Standard or Administrator)
+    set /p ACTION=Choose action [1/2/3]: 
+
+    if "%ACTION%"=="1" (
+        set /p NEWNAME=Enter the new account name: 
+        if "%NEWNAME%"=="" (
+            echo New name cannot be empty. Skipping rename.
+        ) else (
+            echo Renaming "%TARGET%" -> "%NEWNAME%" ...
+            powershell -Command "try { Rename-LocalUser -Name '%TARGET%' -NewName '%NEWNAME%' -ErrorAction Stop; Write-Host 'Rename successful.' } catch { Write-Host 'Rename failed:' $_.Exception.Message }"
+            REM update TARGET variable if rename succeeded (best effort)
+            set "TARGET=%NEWNAME%"
+        )
+    ) else if "%ACTION%"=="2" (
+        set /p NEWPASS=Enter the new password for "%TARGET%": 
+        if "%NEWPASS%"=="" (
+            echo Password cannot be empty. Skipping password change.
+        ) else (
+            echo Setting password...
+            net user "%TARGET%" "%NEWPASS%" >nul 2>&1
+            if %errorlevel%==0 (
+                echo Password changed successfully.
+            ) else (
+                echo Failed to change password. Ensure the account exists and password meets policy.
+            )
+        )
+    ) else if "%ACTION%"=="3" (
+        echo  1 - Make Standard (remove from Administrators)
+        echo  2 - Make Administrator (add to Administrators)
+        set /p TYPECHOICE=Choose [1=Standard / 2=Administrator]: 
+        if "%TYPECHOICE%"=="1" (
+            echo Removing "%TARGET%" from Administrators (making Standard)...
+            net localgroup Administrators "%TARGET%" /delete >nul 2>&1
+            if %errorlevel%==0 (echo Done.) else (echo Note: removal may have failed or account not in Administrators.)
+        ) else if "%TYPECHOICE%"=="2" (
+            echo Adding "%TARGET%" to Administrators (making Administrator)...
+            net localgroup Administrators "%TARGET%" /add >nul 2>&1
+            if %errorlevel%==0 (echo Done.) else (echo Note: adding may have failed.)
+        ) else (
+            echo Invalid choice. Skipping account-type change.
+        )
+    ) else (
+        echo Invalid option. Skipping modifications.
+    )
+) else (
+    echo Skipping existing-account modifications.
+)
+
+echo.
+:: ---------- Create guest account ----------
+set "GUEST=guest_user"
+set /p GUEST=Enter the guest account name to create [default: guest_user]: 
+if "%GUEST%"=="" set "GUEST=guest_user"
+
+echo.
+set /p GUESTPASS=Enter password for "%GUEST%" (leave blank to auto-generate): 
+if "%GUESTPASS%"=="" (
+    REM Generate a simple password. Adjust if you need stronger policy.
+    set /a A=%random% %% 900 + 100
+    set /a B=%random% %% 900 + 100
+    set "GUESTPASS=Guest!%A%%B%"
+    set "AUTOGEN=1"
+) else (
+    set "AUTOGEN=0"
+)
+
+echo Creating user "%GUEST%"...
+net user "%GUEST%" "%GUESTPASS%" /add /expires:never >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Failed to create user "%GUEST%". It may already exist or password didn't meet policy.
+) else (
+    echo User "%GUEST%" created.
+    REM Ensure user is NOT in Administrators
+    net localgroup Administrators "%GUEST%" /delete >nul 2>&1
+    REM Add to Users group (standard)
+    net localgroup Users "%GUEST%" /add >nul 2>&1
+    echo "%GUEST%" set as a standard (non-admin) user.
+)
+
+echo.
+echo -----------------------------
+echo Summary:
+if not "%TARGET%"=="" (
+    echo - Modified account: %TARGET%
+) else (
+    echo - No existing account modified.
+)
+echo - Guest account created: %GUEST%
+if "%AUTOGEN%"=="1" (
+    echo - Auto-generated password for %GUEST%: %GUESTPASS%
+) else (
+    echo - Password set as provided.
+)
+echo -----------------------------
+echo.
+
+echo IMPORTANT:
+echo - This script must be run as Administrator.
+echo - If you renamed or changed passwords, make sure you have the correct credentials before logging out.
+echo.
+pause
+exit /b
