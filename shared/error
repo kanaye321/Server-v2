@@ -1362,27 +1362,51 @@ export default function ReportsSecondary() {
                   <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-100">
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Users className="h-5 w-5 text-blue-600" />
-                      User Analysis Overview - All Criteria
+                      User Analysis Overview - Click a Category to View Details
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-xl border-2 border-indigo-200">
+                      <div 
+                        onClick={() => {
+                          const element = document.getElementById('category1-table');
+                          element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-xl border-2 border-indigo-200 cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
+                      >
                         <p className="text-sm text-indigo-700 mb-1">Category 1</p>
                         <p className="text-3xl font-bold text-indigo-900">{usersWithOldSingleLaptop.length}</p>
                         <p className="text-xs text-indigo-600 mt-2">Single 5+ Year Old Laptop</p>
                       </div>
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border-2 border-purple-200">
+                      <div 
+                        onClick={() => {
+                          const element = document.getElementById('category2-table');
+                          element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border-2 border-purple-200 cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
+                      >
                         <p className="text-sm text-purple-700 mb-1">Category 2</p>
                         <p className="text-3xl font-bold text-purple-900">{usersWithDesktopAndOldLaptop.length}</p>
                         <p className="text-xs text-purple-600 mt-2">Desktop + 5+ Year Old Laptop</p>
                       </div>
-                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border-2 border-green-200">
+                      <div 
+                        onClick={() => {
+                          const element = document.getElementById('category3-table');
+                          element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border-2 border-green-200 cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
+                      >
                         <p className="text-sm text-green-700 mb-1">Category 3</p>
                         <p className="text-3xl font-bold text-green-900">{usersWithTwoLaptopsNoDesktop.length}</p>
                         <p className="text-xs text-green-600 mt-2">Two 5+ Year Old Laptops</p>
                       </div>
-                      <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border-2 border-orange-200">
+                      <div 
+                        onClick={() => {
+                          const element = document.getElementById('category4-table');
+                          element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border-2 border-orange-200 cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
+                      >
                         <p className="text-sm text-orange-700 mb-1">Category 4</p>
                         <p className="text-3xl font-bold text-orange-900">
                           {Array.from(knoxIDUsers.entries()).filter(([knoxId, userAssets]) => {
@@ -1400,11 +1424,18 @@ export default function ReportsSecondary() {
                   </CardContent>
                 </Card>
 
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
+                {/* Category 1: Single 5+ Year Old Laptop */}
+                <Card id="category1-table" className="border-2 border-indigo-100">
+                  <CardHeader className="bg-gradient-to-r from-indigo-50 to-indigo-100">
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Laptop className="h-5 w-5 text-indigo-600" />
+                        Category 1: Users with Only One 5+ Year Old Laptop
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
                       // Build comprehensive export data with all device details
                       const exportData = [];
 
@@ -1585,34 +1616,18 @@ export default function ReportsSecondary() {
                   </Button>
                 </div>
 
-                <Tabs defaultValue="category1" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="category1">Single Old Laptop ({usersWithOldSingleLaptop.length})</TabsTrigger>
-                    <TabsTrigger value="category2">Desktop + Old Laptop ({usersWithDesktopAndOldLaptop.length})</TabsTrigger>
-                    <TabsTrigger value="category3">Two Laptops ({usersWithTwoLaptopsNoDesktop.length})</TabsTrigger>
-                    <TabsTrigger value="category4">2 Laptops + Desktop ({Array.from(knoxIDUsers.entries()).filter(([knoxId, userAssets]) => {
-                      const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                      const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                      if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                      const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                      const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                      return hasOldLaptop && hasNewLaptop;
-                    }).length})</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="category1">
-                    {/* Category 1: Single 5+ Year Old Laptop */}
-                    <Card className="border-2 border-indigo-100">
-                      <CardHeader className="bg-gradient-to-r from-indigo-50 to-indigo-100">
-                        <CardTitle className="text-lg flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Laptop className="h-5 w-5 text-indigo-600" />
-                            Category 1: Users with Only One 5+ Year Old Laptop
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
+                {/* Category 1: Single 5+ Year Old Laptop */}
+                <Card id="category1-table" className="border-2 border-indigo-100">
+                  <CardHeader className="bg-gradient-to-r from-indigo-50 to-indigo-100">
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Laptop className="h-5 w-5 text-indigo-600" />
+                        Category 1: Users with Only One 5+ Year Old Laptop
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
                               const exportData = usersWithOldSingleLaptop.map(({ knoxId, assets: userAssets }) => {
                                 const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
                                 return {
@@ -1741,11 +1756,8 @@ export default function ReportsSecondary() {
                       </CardContent>
                     </Card>
 
-                  </TabsContent>
-
-                  <TabsContent value="category2">
-                    {/* Category 2: Desktop + 5+ Year Old Laptop */}
-                    <Card className="border-2 border-purple-100">
+                {/* Category 2: Desktop + 5+ Year Old Laptop */}
+                <Card id="category2-table" className="border-2 border-purple-100">
                       <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-100">
                         <CardTitle className="text-lg flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -1922,11 +1934,8 @@ export default function ReportsSecondary() {
                       </CardContent>
                     </Card>
 
-                  </TabsContent>
-
-                  <TabsContent value="category3">
-                    {/* Category 3: Two Laptops, No Desktop */}
-                    <Card className="border-2 border-green-100">
+                {/* Category 3: Two Laptops, No Desktop */}
+                <Card id="category3-table" className="border-2 border-green-100">
                       <CardHeader className="bg-gradient-to-r from-green-50 to-green-100">
                         <CardTitle className="text-lg flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -2102,11 +2111,9 @@ export default function ReportsSecondary() {
                         )}
                       </CardContent>
                     </Card>
-                  </TabsContent>
 
-                  <TabsContent value="category4">
-                    {/* Category 4: Two Laptops (one old, one new) + Desktop */}
-                    <Card className="border-2 border-orange-100">
+                {/* Category 4: Two Laptops (one old, one new) + Desktop */}
+                <Card id="category4-table" className="border-2 border-orange-100">
                       <CardHeader className="bg-gradient-to-r from-orange-50 to-orange-100">
                         <CardTitle className="text-lg flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -2355,8 +2362,6 @@ export default function ReportsSecondary() {
                         )}
                       </CardContent>
                     </Card>
-                  </TabsContent>
-                </Tabs>
               </TabsContent>
 
             </CardContent>
