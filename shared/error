@@ -63,7 +63,7 @@ export default function ReportsSecondary() {
   // Date range filter state
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
-  
+
   // Date range additional filters
   const [dateRangeCategoryFilter, setDateRangeCategoryFilter] = useState("all");
   const [dateRangeStatusFilter, setDateRangeStatusFilter] = useState("all");
@@ -823,19 +823,19 @@ export default function ReportsSecondary() {
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop' })} className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border-2 border-green-200 text-center hover:shadow-lg transition-all cursor-pointer">
+                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border-2 border-green-200 text-center hover:shadow-lg transition-all cursor-pointer">
                         <p className="text-4xl font-bold text-green-700 mb-2">{ageDistribution.new}</p>
                         <p className="text-sm font-medium text-green-800">New (≤1 year)</p>
                       </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop' })} className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border-2 border-blue-200 text-center hover:shadow-lg transition-all cursor-pointer">
+                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border-2 border-blue-200 text-center hover:shadow-lg transition-all cursor-pointer">
                         <p className="text-4xl font-bold text-blue-700 mb-2">{ageDistribution.good}</p>
                         <p className="text-sm font-medium text-blue-800">Good (1-3 years)</p>
                       </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop' })} className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-xl border-2 border-yellow-200 text-center hover:shadow-lg transition-all cursor-pointer">
+                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-xl border-2 border-yellow-200 text-center hover:shadow-lg transition-all cursor-pointer">
                         <p className="text-4xl font-bold text-yellow-700 mb-2">{ageDistribution.aging}</p>
                         <p className="text-sm font-medium text-yellow-800">Aging (3-5 years)</p>
                       </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop' })} className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-xl border-2 border-red-200 text-center hover:shadow-lg transition-all cursor-pointer">
+                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-xl border-2 border-red-200 text-center hover:shadow-lg transition-all cursor-pointer">
                         <p className="text-4xl font-bold text-red-700 mb-2">{ageDistribution.old}</p>
                         <p className="text-sm font-medium text-red-800">Old (&gt;5 years)</p>
                       </div>
@@ -1152,7 +1152,7 @@ export default function ReportsSecondary() {
 
                   <div className="flex flex-wrap gap-2 items-center">
                     <span className="text-sm font-medium text-gray-600">Additional Filters:</span>
-                    
+
                     <Select value={dateRangeCategoryFilter} onValueChange={setDateRangeCategoryFilter}>
                       <SelectTrigger className="w-[140px]">
                         <SelectValue placeholder="Category" />
@@ -1447,11 +1447,15 @@ export default function ReportsSecondary() {
                             laptopIpAddress: laptop?.ipAddress || 'N/A',
                             laptopMacAddress: laptop?.macAddress || 'N/A',
                             laptopOsType: laptop?.osType || 'N/A',
+                            laptopAssignedTo: laptop?.assignedTo || 'N/A',
+                            laptopCost: laptop?.cost || 'N/A',
+                            laptopWarranty: laptop?.warranty || 'N/A',
                             desktopAssetTag: desktop?.assetTag || 'N/A',
                             desktopName: desktop?.name || 'N/A',
                             desktopModel: desktop?.model || 'N/A',
                             desktopSerialNumber: desktop?.serialNumber || 'N/A',
                             desktopManufacturer: desktop?.manufacturer || 'N/A',
+                            desktopAge: calculateDeviceAge(desktop?.purchaseDate) + ' years',
                             desktopPurchaseDate: desktop?.purchaseDate ? format(new Date(desktop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                             desktopStatus: desktop?.status || 'N/A',
                             desktopCondition: desktop?.condition || 'N/A',
@@ -1459,6 +1463,9 @@ export default function ReportsSecondary() {
                             desktopIpAddress: desktop?.ipAddress || 'N/A',
                             desktopMacAddress: desktop?.macAddress || 'N/A',
                             desktopOsType: desktop?.osType || 'N/A',
+                            desktopAssignedTo: desktop?.assignedTo || 'N/A',
+                            desktopCost: desktop?.cost || 'N/A',
+                            desktopWarranty: desktop?.warranty || 'N/A',
                             department: laptop?.department || 'N/A'
                           };
                         }),
@@ -1480,6 +1487,9 @@ export default function ReportsSecondary() {
                             laptop1IpAddress: userLaptops[0]?.ipAddress || 'N/A',
                             laptop1MacAddress: userLaptops[0]?.macAddress || 'N/A',
                             laptop1OsType: userLaptops[0]?.osType || 'N/A',
+                            laptop1AssignedTo: userLaptops[0]?.assignedTo || 'N/A',
+                            laptop1Cost: userLaptops[0]?.cost || 'N/A',
+                            laptop1Warranty: userLaptops[0]?.warranty || 'N/A',
                             laptop2AssetTag: userLaptops[1]?.assetTag || 'N/A',
                             laptop2Name: userLaptops[1]?.name || 'N/A',
                             laptop2Model: userLaptops[1]?.model || 'N/A',
@@ -1493,6 +1503,9 @@ export default function ReportsSecondary() {
                             laptop2IpAddress: userLaptops[1]?.ipAddress || 'N/A',
                             laptop2MacAddress: userLaptops[1]?.macAddress || 'N/A',
                             laptop2OsType: userLaptops[1]?.osType || 'N/A',
+                            laptop2AssignedTo: userLaptops[1]?.assignedTo || 'N/A',
+                            laptop2Cost: userLaptops[1]?.cost || 'N/A',
+                            laptop2Warranty: userLaptops[1]?.warranty || 'N/A',
                             department: userLaptops[0]?.department || 'N/A'
                           };
                         }),
@@ -1526,6 +1539,9 @@ export default function ReportsSecondary() {
                               oldLaptopIpAddress: oldLaptop?.ipAddress || 'N/A',
                               oldLaptopMacAddress: oldLaptop?.macAddress || 'N/A',
                               oldLaptopOsType: oldLaptop?.osType || 'N/A',
+                              oldLaptopAssignedTo: oldLaptop?.assignedTo || 'N/A',
+                              oldLaptopCost: oldLaptop?.cost || 'N/A',
+                              oldLaptopWarranty: oldLaptop?.warranty || 'N/A',
                               newLaptopAssetTag: newLaptop?.assetTag || 'N/A',
                               newLaptopName: newLaptop?.name || 'N/A',
                               newLaptopModel: newLaptop?.model || 'N/A',
@@ -1539,11 +1555,15 @@ export default function ReportsSecondary() {
                               newLaptopIpAddress: newLaptop?.ipAddress || 'N/A',
                               newLaptopMacAddress: newLaptop?.macAddress || 'N/A',
                               newLaptopOsType: newLaptop?.osType || 'N/A',
+                              newLaptopAssignedTo: newLaptop?.assignedTo || 'N/A',
+                              newLaptopCost: newLaptop?.cost || 'N/A',
+                              newLaptopWarranty: newLaptop?.warranty || 'N/A',
                               desktopAssetTag: userDesktop?.assetTag || 'N/A',
                               desktopName: userDesktop?.name || 'N/A',
                               desktopModel: userDesktop?.model || 'N/A',
                               desktopSerialNumber: userDesktop?.serialNumber || 'N/A',
                               desktopManufacturer: userDesktop?.manufacturer || 'N/A',
+                              desktopAge: calculateDeviceAge(userDesktop?.purchaseDate) + ' years',
                               desktopPurchaseDate: userDesktop?.purchaseDate ? format(new Date(userDesktop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                               desktopStatus: userDesktop?.status || 'N/A',
                               desktopCondition: userDesktop?.condition || 'N/A',
@@ -1551,6 +1571,9 @@ export default function ReportsSecondary() {
                               desktopIpAddress: userDesktop?.ipAddress || 'N/A',
                               desktopMacAddress: userDesktop?.macAddress || 'N/A',
                               desktopOsType: userDesktop?.osType || 'N/A',
+                              desktopAssignedTo: userDesktop?.assignedTo || 'N/A',
+                              desktopCost: userDesktop?.cost || 'N/A',
+                              desktopWarranty: userDesktop?.warranty || 'N/A',
                               department: oldLaptop?.department || 'N/A'
                             };
                           }),
