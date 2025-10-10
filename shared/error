@@ -1433,16 +1433,19 @@ export default function ReportsSecondary() {
                         ...usersWithDesktopAndOldLaptop.map(({ knoxId, assets: userAssets }) => {
                           const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
                           const desktop = userAssets.find(a => a.category?.toLowerCase() === 'desktop');
+                          const laptopAge = laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) : 0;
+                          const desktopAge = desktop?.purchaseDate ? calculateDeviceAge(desktop.purchaseDate) : 0;
+                          
                           return {
                             'Category': 'Desktop + 5+ Year Old Laptop',
-                            'Knox ID': knoxId,
+                            'Knox ID': knoxId || 'N/A',
                             'Department': laptop?.department || desktop?.department || 'N/A',
                             'Laptop Asset Tag': laptop?.assetTag || 'N/A',
                             'Laptop Name': laptop?.name || 'N/A',
                             'Laptop Model': laptop?.model || 'N/A',
                             'Laptop Serial Number': laptop?.serialNumber || 'N/A',
                             'Laptop Manufacturer': laptop?.manufacturer || 'N/A',
-                            'Laptop Age': calculateDeviceAge(laptop?.purchaseDate) + ' years',
+                            'Laptop Age': laptopAge + ' years',
                             'Laptop Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                             'Laptop Status': laptop?.status || 'N/A',
                             'Laptop Condition': laptop?.condition || 'N/A',
@@ -1458,7 +1461,7 @@ export default function ReportsSecondary() {
                             'Desktop Model': desktop?.model || 'N/A',
                             'Desktop Serial Number': desktop?.serialNumber || 'N/A',
                             'Desktop Manufacturer': desktop?.manufacturer || 'N/A',
-                            'Desktop Age': calculateDeviceAge(desktop?.purchaseDate) + ' years',
+                            'Desktop Age': desktopAge + ' years',
                             'Desktop Purchase Date': desktop?.purchaseDate ? format(new Date(desktop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                             'Desktop Status': desktop?.status || 'N/A',
                             'Desktop Condition': desktop?.condition || 'N/A',
@@ -1473,42 +1476,47 @@ export default function ReportsSecondary() {
                         }),
                         ...usersWithTwoLaptopsNoDesktop.map(({ knoxId, assets: userAssets }) => {
                           const userLaptops = userAssets.filter(a => a.category?.toLowerCase() === 'laptop');
+                          const laptop1 = userLaptops[0];
+                          const laptop2 = userLaptops[1];
+                          const laptop1Age = laptop1?.purchaseDate ? calculateDeviceAge(laptop1.purchaseDate) : 0;
+                          const laptop2Age = laptop2?.purchaseDate ? calculateDeviceAge(laptop2.purchaseDate) : 0;
+                          
                           return {
                             'Category': 'Two Laptops, No Desktop',
-                            'Knox ID': knoxId,
-                            'Department': userLaptops[0]?.department || 'N/A',
-                            'Laptop 1 Asset Tag': userLaptops[0]?.assetTag || 'N/A',
-                            'Laptop 1 Name': userLaptops[0]?.name || 'N/A',
-                            'Laptop 1 Model': userLaptops[0]?.model || 'N/A',
-                            'Laptop 1 Serial Number': userLaptops[0]?.serialNumber || 'N/A',
-                            'Laptop 1 Manufacturer': userLaptops[0]?.manufacturer || 'N/A',
-                            'Laptop 1 Age': calculateDeviceAge(userLaptops[0]?.purchaseDate) + ' years',
-                            'Laptop 1 Purchase Date': userLaptops[0]?.purchaseDate ? format(new Date(userLaptops[0].purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'Laptop 1 Status': userLaptops[0]?.status || 'N/A',
-                            'Laptop 1 Condition': userLaptops[0]?.condition || 'N/A',
-                            'Laptop 1 Location': userLaptops[0]?.location || 'N/A',
-                            'Laptop 1 IP Address': userLaptops[0]?.ipAddress || 'N/A',
-                            'Laptop 1 MAC Address': userLaptops[0]?.macAddress || 'N/A',
-                            'Laptop 1 OS Type': userLaptops[0]?.osType || 'N/A',
-                            'Laptop 1 Assigned To': userLaptops[0]?.assignedTo || 'N/A',
-                            'Laptop 1 Cost': userLaptops[0]?.cost || 'N/A',
-                            'Laptop 1 Warranty': userLaptops[0]?.warranty || 'N/A',
-                            'Laptop 2 Asset Tag': userLaptops[1]?.assetTag || 'N/A',
-                            'Laptop 2 Name': userLaptops[1]?.name || 'N/A',
-                            'Laptop 2 Model': userLaptops[1]?.model || 'N/A',
-                            'Laptop 2 Serial Number': userLaptops[1]?.serialNumber || 'N/A',
-                            'Laptop 2 Manufacturer': userLaptops[1]?.manufacturer || 'N/A',
-                            'Laptop 2 Age': calculateDeviceAge(userLaptops[1]?.purchaseDate) + ' years',
-                            'Laptop 2 Purchase Date': userLaptops[1]?.purchaseDate ? format(new Date(userLaptops[1].purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'Laptop 2 Status': userLaptops[1]?.status || 'N/A',
-                            'Laptop 2 Condition': userLaptops[1]?.condition || 'N/A',
-                            'Laptop 2 Location': userLaptops[1]?.location || 'N/A',
-                            'Laptop 2 IP Address': userLaptops[1]?.ipAddress || 'N/A',
-                            'Laptop 2 MAC Address': userLaptops[1]?.macAddress || 'N/A',
-                            'Laptop 2 OS Type': userLaptops[1]?.osType || 'N/A',
-                            'Laptop 2 Assigned To': userLaptops[1]?.assignedTo || 'N/A',
-                            'Laptop 2 Cost': userLaptops[1]?.cost || 'N/A',
-                            'Laptop 2 Warranty': userLaptops[1]?.warranty || 'N/A'
+                            'Knox ID': knoxId || 'N/A',
+                            'Department': laptop1?.department || laptop2?.department || 'N/A',
+                            'Laptop 1 Asset Tag': laptop1?.assetTag || 'N/A',
+                            'Laptop 1 Name': laptop1?.name || 'N/A',
+                            'Laptop 1 Model': laptop1?.model || 'N/A',
+                            'Laptop 1 Serial Number': laptop1?.serialNumber || 'N/A',
+                            'Laptop 1 Manufacturer': laptop1?.manufacturer || 'N/A',
+                            'Laptop 1 Age': laptop1Age + ' years',
+                            'Laptop 1 Purchase Date': laptop1?.purchaseDate ? format(new Date(laptop1.purchaseDate), 'yyyy-MM-dd') : 'N/A',
+                            'Laptop 1 Status': laptop1?.status || 'N/A',
+                            'Laptop 1 Condition': laptop1?.condition || 'N/A',
+                            'Laptop 1 Location': laptop1?.location || 'N/A',
+                            'Laptop 1 IP Address': laptop1?.ipAddress || 'N/A',
+                            'Laptop 1 MAC Address': laptop1?.macAddress || 'N/A',
+                            'Laptop 1 OS Type': laptop1?.osType || 'N/A',
+                            'Laptop 1 Assigned To': laptop1?.assignedTo || 'N/A',
+                            'Laptop 1 Cost': laptop1?.cost || 'N/A',
+                            'Laptop 1 Warranty': laptop1?.warranty || 'N/A',
+                            'Laptop 2 Asset Tag': laptop2?.assetTag || 'N/A',
+                            'Laptop 2 Name': laptop2?.name || 'N/A',
+                            'Laptop 2 Model': laptop2?.model || 'N/A',
+                            'Laptop 2 Serial Number': laptop2?.serialNumber || 'N/A',
+                            'Laptop 2 Manufacturer': laptop2?.manufacturer || 'N/A',
+                            'Laptop 2 Age': laptop2Age + ' years',
+                            'Laptop 2 Purchase Date': laptop2?.purchaseDate ? format(new Date(laptop2.purchaseDate), 'yyyy-MM-dd') : 'N/A',
+                            'Laptop 2 Status': laptop2?.status || 'N/A',
+                            'Laptop 2 Condition': laptop2?.condition || 'N/A',
+                            'Laptop 2 Location': laptop2?.location || 'N/A',
+                            'Laptop 2 IP Address': laptop2?.ipAddress || 'N/A',
+                            'Laptop 2 MAC Address': laptop2?.macAddress || 'N/A',
+                            'Laptop 2 OS Type': laptop2?.osType || 'N/A',
+                            'Laptop 2 Assigned To': laptop2?.assignedTo || 'N/A',
+                            'Laptop 2 Cost': laptop2?.cost || 'N/A',
+                            'Laptop 2 Warranty': laptop2?.warranty || 'N/A'
                           };
                         }),
                         ...Array.from(knoxIDUsers.entries())
@@ -1525,16 +1533,20 @@ export default function ReportsSecondary() {
                             const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
                             const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
                             const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
+                            const oldLaptopAge = oldLaptop?.purchaseDate ? calculateDeviceAge(oldLaptop.purchaseDate) : 0;
+                            const newLaptopAge = newLaptop?.purchaseDate ? calculateDeviceAge(newLaptop.purchaseDate) : 0;
+                            const desktopAge = userDesktop?.purchaseDate ? calculateDeviceAge(userDesktop.purchaseDate) : 0;
+                            
                             return {
                               'Category': 'Two Laptops + One Desktop',
-                              'Knox ID': knoxId,
-                              'Department': oldLaptop?.department || 'N/A',
+                              'Knox ID': knoxId || 'N/A',
+                              'Department': oldLaptop?.department || newLaptop?.department || userDesktop?.department || 'N/A',
                               'Old Laptop Asset Tag': oldLaptop?.assetTag || 'N/A',
                               'Old Laptop Name': oldLaptop?.name || 'N/A',
                               'Old Laptop Model': oldLaptop?.model || 'N/A',
                               'Old Laptop Serial Number': oldLaptop?.serialNumber || 'N/A',
                               'Old Laptop Manufacturer': oldLaptop?.manufacturer || 'N/A',
-                              'Old Laptop Age': calculateDeviceAge(oldLaptop?.purchaseDate) + ' years',
+                              'Old Laptop Age': oldLaptopAge + ' years',
                               'Old Laptop Purchase Date': oldLaptop?.purchaseDate ? format(new Date(oldLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                               'Old Laptop Status': oldLaptop?.status || 'N/A',
                               'Old Laptop Condition': oldLaptop?.condition || 'N/A',
@@ -1550,7 +1562,7 @@ export default function ReportsSecondary() {
                               'New Laptop Model': newLaptop?.model || 'N/A',
                               'New Laptop Serial Number': newLaptop?.serialNumber || 'N/A',
                               'New Laptop Manufacturer': newLaptop?.manufacturer || 'N/A',
-                              'New Laptop Age': calculateDeviceAge(newLaptop?.purchaseDate) + ' years',
+                              'New Laptop Age': newLaptopAge + ' years',
                               'New Laptop Purchase Date': newLaptop?.purchaseDate ? format(new Date(newLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                               'New Laptop Status': newLaptop?.status || 'N/A',
                               'New Laptop Condition': newLaptop?.condition || 'N/A',
@@ -1566,7 +1578,7 @@ export default function ReportsSecondary() {
                               'Desktop Model': userDesktop?.model || 'N/A',
                               'Desktop Serial Number': userDesktop?.serialNumber || 'N/A',
                               'Desktop Manufacturer': userDesktop?.manufacturer || 'N/A',
-                              'Desktop Age': calculateDeviceAge(userDesktop?.purchaseDate) + ' years',
+                              'Desktop Age': desktopAge + ' years',
                               'Desktop Purchase Date': userDesktop?.purchaseDate ? format(new Date(userDesktop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
                               'Desktop Status': userDesktop?.status || 'N/A',
                               'Desktop Condition': userDesktop?.condition || 'N/A',
