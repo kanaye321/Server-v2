@@ -1451,6 +1451,8 @@ export default function ReportsSecondary() {
                             laptopCost: laptop?.cost || 'N/A',
                             laptopWarranty: laptop?.warranty || 'N/A',
                             laptopDepartment: laptop?.department || 'N/A',
+                            laptopNotes: laptop?.notes || 'N/A',
+                            laptopBrand: laptop?.brand || 'N/A',
                             desktopAssetTag: desktop?.assetTag || 'N/A',
                             desktopName: desktop?.name || 'N/A',
                             desktopModel: desktop?.model || 'N/A',
@@ -1468,6 +1470,8 @@ export default function ReportsSecondary() {
                             desktopCost: desktop?.cost || 'N/A',
                             desktopWarranty: desktop?.warranty || 'N/A',
                             desktopDepartment: desktop?.department || 'N/A',
+                            desktopNotes: desktop?.notes || 'N/A',
+                            desktopBrand: desktop?.brand || 'N/A',
                             department: laptop?.department || 'N/A'
                           };
                         }),
@@ -1493,6 +1497,8 @@ export default function ReportsSecondary() {
                             laptop1Cost: userLaptops[0]?.cost || 'N/A',
                             laptop1Warranty: userLaptops[0]?.warranty || 'N/A',
                             laptop1Department: userLaptops[0]?.department || 'N/A',
+                            laptop1Notes: userLaptops[0]?.notes || 'N/A',
+                            laptop1Brand: userLaptops[0]?.brand || 'N/A',
                             laptop2AssetTag: userLaptops[1]?.assetTag || 'N/A',
                             laptop2Name: userLaptops[1]?.name || 'N/A',
                             laptop2Model: userLaptops[1]?.model || 'N/A',
@@ -1510,6 +1516,8 @@ export default function ReportsSecondary() {
                             laptop2Cost: userLaptops[1]?.cost || 'N/A',
                             laptop2Warranty: userLaptops[1]?.warranty || 'N/A',
                             laptop2Department: userLaptops[1]?.department || 'N/A',
+                            laptop2Notes: userLaptops[1]?.notes || 'N/A',
+                            laptop2Brand: userLaptops[1]?.brand || 'N/A',
                             department: userLaptops[0]?.department || 'N/A'
                           };
                         }),
@@ -1547,6 +1555,8 @@ export default function ReportsSecondary() {
                               oldLaptopCost: oldLaptop?.cost || 'N/A',
                               oldLaptopWarranty: oldLaptop?.warranty || 'N/A',
                               oldLaptopDepartment: oldLaptop?.department || 'N/A',
+                              oldLaptopNotes: oldLaptop?.notes || 'N/A',
+                              oldLaptopBrand: oldLaptop?.brand || 'N/A',
                               newLaptopAssetTag: newLaptop?.assetTag || 'N/A',
                               newLaptopName: newLaptop?.name || 'N/A',
                               newLaptopModel: newLaptop?.model || 'N/A',
@@ -1564,6 +1574,8 @@ export default function ReportsSecondary() {
                               newLaptopCost: newLaptop?.cost || 'N/A',
                               newLaptopWarranty: newLaptop?.warranty || 'N/A',
                               newLaptopDepartment: newLaptop?.department || 'N/A',
+                              newLaptopNotes: newLaptop?.notes || 'N/A',
+                              newLaptopBrand: newLaptop?.brand || 'N/A',
                               desktopAssetTag: userDesktop?.assetTag || 'N/A',
                               desktopName: userDesktop?.name || 'N/A',
                               desktopModel: userDesktop?.model || 'N/A',
@@ -1581,6 +1593,8 @@ export default function ReportsSecondary() {
                               desktopCost: userDesktop?.cost || 'N/A',
                               desktopWarranty: userDesktop?.warranty || 'N/A',
                               desktopDepartment: userDesktop?.department || 'N/A',
+                              desktopNotes: userDesktop?.notes || 'N/A',
+                              desktopBrand: userDesktop?.brand || 'N/A',
                               department: oldLaptop?.department || 'N/A'
                             };
                           }),
