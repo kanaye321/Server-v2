@@ -792,39 +792,45 @@ h2 {
   z-index: -1;
 }
 
-/* Modern Tab Button Styling */
+/* Modern Tab Button Styling - Main and Nested Tabs */
 [data-radix-tabs-trigger],
 .tabs-trigger,
-button[role="tab"] {
+button[role="tab"],
+[data-state="inactive"],
+[data-state="active"] {
   @apply relative px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-300 overflow-hidden;
-  background: rgba(255, 255, 255, 0.8);
-  color: #64748b;
-  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #64748b !important;
+  border: 2px solid rgba(226, 232, 240, 0.6) !important;
   backdrop-filter: blur(10px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
 }
 
 [data-radix-tabs-trigger]:hover,
 .tabs-trigger:hover,
-button[role="tab"]:hover {
-  background: rgba(255, 255, 255, 0.95);
-  color: #334155;
-  border-color: rgba(99, 102, 241, 0.2);
+button[role="tab"]:hover,
+[data-state="inactive"]:hover {
+  background: rgba(255, 255, 255, 1) !important;
+  color: #334155 !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2) !important;
 }
 
 [data-radix-tabs-trigger][data-state="active"],
 .tabs-trigger[data-state="active"],
-button[role="tab"][aria-selected="true"] {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  border-color: transparent;
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+button[role="tab"][aria-selected="true"],
+[data-state="active"] {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  color: white !important;
+  border-color: transparent !important;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
 }
 
 [data-radix-tabs-trigger][data-state="active"]::before,
 .tabs-trigger[data-state="active"]::before,
-button[role="tab"][aria-selected="true"]::before {
+button[role="tab"][aria-selected="true"]::before,
+[data-state="active"]::before {
   content: '';
   position: absolute;
   top: 0;
@@ -834,44 +840,57 @@ button[role="tab"][aria-selected="true"]::before {
   background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%);
   transform: translateX(-100%);
   transition: transform 0.6s;
+  pointer-events: none;
 }
 
 [data-radix-tabs-trigger][data-state="active"]:hover::before,
 .tabs-trigger[data-state="active"]:hover::before,
-button[role="tab"][aria-selected="true"]:hover::before {
+button[role="tab"][aria-selected="true"]:hover::before,
+[data-state="active"]:hover::before {
   transform: translateX(100%);
+}
+
+/* Ensure nested tab content within active tabs inherits color */
+[data-state="active"] .flex,
+[data-state="active"] span,
+[data-state="active"] svg,
+[data-state="active"] div {
+  color: inherit !important;
 }
 
 /* Dark mode tab styling */
 .dark [data-radix-tabs-trigger],
 .dark .tabs-trigger,
-.dark button[role="tab"] {
-  background: rgba(30, 41, 59, 0.8);
-  color: #94a3b8;
-  border-color: transparent;
+.dark button[role="tab"],
+.dark [data-state="inactive"] {
+  background: rgba(30, 41, 59, 0.9) !important;
+  color: #94a3b8 !important;
+  border-color: rgba(71, 85, 105, 0.6) !important;
 }
 
 .dark [data-radix-tabs-trigger]:hover,
 .dark .tabs-trigger:hover,
-.dark button[role="tab"]:hover {
-  background: rgba(51, 65, 85, 0.9);
-  color: #e2e8f0;
-  border-color: rgba(139, 92, 246, 0.3);
+.dark button[role="tab"]:hover,
+.dark [data-state="inactive"]:hover {
+  background: rgba(51, 65, 85, 0.9) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
 }
 
 .dark [data-radix-tabs-trigger][data-state="active"],
 .dark .tabs-trigger[data-state="active"],
-.dark button[role="tab"][aria-selected="true"] {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+.dark button[role="tab"][aria-selected="true"],
+.dark [data-state="active"] {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  color: white !important;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
 }
 
 /* Tab list container styling */
 [data-radix-tabs-list],
 .tabs-list {
   @apply rounded-2xl p-2 gap-2;
-  background: rgba(241, 245, 249, 0.8);
+  background: rgba(241, 245, 249, 0.9);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(226, 232, 240, 0.8);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -879,21 +898,32 @@ button[role="tab"][aria-selected="true"]:hover::before {
 
 .dark [data-radix-tabs-list],
 .dark .tabs-list {
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(15, 23, 42, 0.9);
   border-color: rgba(51, 65, 85, 0.8);
 }
 
 /* Icon styling within tabs */
 [data-radix-tabs-trigger] svg,
 .tabs-trigger svg,
-button[role="tab"] svg {
+button[role="tab"] svg,
+[data-state="inactive"] svg,
+[data-state="active"] svg {
   @apply transition-transform duration-300;
 }
 
 [data-radix-tabs-trigger][data-state="active"] svg,
 .tabs-trigger[data-state="active"] svg,
-button[role="tab"][aria-selected="true"] svg {
+button[role="tab"][aria-selected="true"] svg,
+[data-state="active"] svg {
   transform: scale(1.1);
+  color: white !important;
+}
+
+/* Badge styling within tabs */
+[data-state="active"] .bg-secondary {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
 }
 
 /* Enhanced Page-specific Styles with More Colors */
