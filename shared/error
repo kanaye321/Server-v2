@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,21 @@ interface ReportData {
   licenses: any[];
 }
 
+// Helper function to memoize expensive calculations
+const memoizeFunction = (fn: (...args: any[]) => any) => {
+  const cache = new Map();
+  return (...args: any[]) => {
+    const key = JSON.stringify(args);
+    if (cache.has(key)) {
+      return cache.get(key);
+    }
+    const result = fn(...args);
+    cache.set(key, result);
+    return result;
+  };
+};
+
+
 export default function ReportsSecondary() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -81,7 +96,7 @@ export default function ReportsSecondary() {
   }, [queryClient]);
 
 
-  const { data: assets = [] } = useQuery({
+  const { data: assets = [], isLoading: isLoadingAssets, isError: isErrorAssets } = useQuery({
     queryKey: ["assets", statusFilter, categoryFilter, departmentFilter, conditionFilter, searchTerm, page, pageSize], // Include filters in queryKey
     queryFn: async () => {
       // Construct URL with filters
@@ -98,9 +113,10 @@ export default function ReportsSecondary() {
       if (!response.ok) throw new Error("Failed to fetch assets");
       return response.json();
     },
+    keepPreviousData: true, // Keep previous data while fetching new data
   });
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isLoading: isLoadingUsers } = useQuery({
     queryKey: ["users"],
     queryFn: async () => {
       const response = await fetch("/api/users", { credentials: "include" });
@@ -109,7 +125,7 @@ export default function ReportsSecondary() {
     },
   });
 
-  const { data: activities = [] } = useQuery({
+  const { data: activities = [], isLoading: isLoadingActivities } = useQuery({
     queryKey: ["activities"],
     queryFn: async () => {
       const response = await fetch("/api/activities", { credentials: "include" });
@@ -118,7 +134,7 @@ export default function ReportsSecondary() {
     },
   });
 
-  const { data: consumables = [] } = useQuery({
+  const { data: consumables = [], isLoading: isLoadingConsumables } = useQuery({
     queryKey: ["consumables"],
     queryFn: async () => {
       const response = await fetch("/api/consumables", { credentials: "include" });
@@ -127,7 +143,7 @@ export default function ReportsSecondary() {
     },
   });
 
-  const { data: licenses = [] } = useQuery({
+  const { data: licenses = [], isLoading: isLoadingLicenses } = useQuery({
     queryKey: ["licenses"],
     queryFn: async () => {
       const response = await fetch("/api/licenses", { credentials: "include" });
@@ -140,14 +156,15 @@ export default function ReportsSecondary() {
     setReportData({ assets, users, activities, consumables, licenses });
   }, [assets, users, activities, consumables, licenses]);
 
-  const calculateDeviceAge = (purchaseDate: string) => {
+  // Memoized calculation for device age
+  const calculateDeviceAge = useMemo(() => memoizeFunction((purchaseDate: string) => {
     if (!purchaseDate) return 0;
     const purchase = new Date(purchaseDate);
     const now = new Date();
     return Math.floor((now.getTime() - purchase.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-  };
+  }), []);
 
-  const navigateWithFilters = (filters: {
+  const navigateWithFilters = useCallback((filters: {
     categoryFilter?: string;
     statusFilter?: string;
     departmentFilter?: string;
@@ -172,16 +189,17 @@ export default function ReportsSecondary() {
     }
     const queryString = params.toString();
     navigate(`/assets${queryString ? `?${queryString}` : ''}`);
-  };
+  }, [navigate]);
 
-  const laptops = assets.filter(a => a.category?.toLowerCase() === 'laptop');
-  const desktops = assets.filter(a => a.category?.toLowerCase() === 'desktop');
-  const deployedAssets = assets.filter(a => a.status === 'Deployed');
-  const availableAssets = assets.filter(a => a.status === 'available' || a.status === 'On-Hand');
-  const goodCondition = assets.filter(a => a.condition === 'Good');
-  const badCondition = assets.filter(a => a.condition === 'Bad');
+  // Memoized filtering operations
+  const laptops = useMemo(() => assets.filter(a => a.category?.toLowerCase() === 'laptop'), [assets]);
+  const desktops = useMemo(() => assets.filter(a => a.category?.toLowerCase() === 'desktop'), [assets]);
+  const deployedAssets = useMemo(() => assets.filter(a => a.status === 'Deployed'), [assets]);
+  const availableAssets = useMemo(() => assets.filter(a => a.status === 'available' || a.status === 'On-Hand'), [assets]);
+  const goodCondition = useMemo(() => assets.filter(a => a.condition === 'Good'), [assets]);
+  const badCondition = useMemo(() => assets.filter(a => a.condition === 'Bad'), [assets]);
 
-  const laptopStats = {
+  const laptopStats = useMemo(() => ({
     total: laptops.length,
     onHand: laptops.filter(laptop => laptop.status === 'available' || laptop.status === 'On-Hand').length,
     deployed: laptops.filter(laptop => laptop.status === 'Deployed').length,
@@ -189,9 +207,9 @@ export default function ReportsSecondary() {
     goodCondition: laptops.filter(laptop => laptop.condition === 'Good').length,
     badCondition: laptops.filter(laptop => laptop.condition === 'Bad').length,
     reserved: laptops.filter(laptop => laptop.status === 'Reserved').length
-  };
+  }), [laptops]);
 
-  const desktopStats = {
+  const desktopStats = useMemo(() => ({
     total: desktops.length,
     onHand: desktops.filter(desktop => desktop.status === 'available' || desktop.status === 'On-Hand').length,
     deployed: desktops.filter(desktop => desktop.status === 'Deployed').length,
@@ -199,9 +217,9 @@ export default function ReportsSecondary() {
     goodCondition: desktops.filter(desktop => desktop.condition === 'Good').length,
     badCondition: desktops.filter(desktop => desktop.condition === 'Bad').length,
     reserved: desktops.filter(desktop => desktop.status === 'Reserved').length
-  };
+  }), [desktops]);
 
-  const departmentData = assets.reduce((acc: any, asset: any) => {
+  const departmentData = useMemo(() => assets.reduce((acc: any, asset: any) => {
     if (asset.department && asset.status === 'Deployed') {
       if (!acc[asset.department]) {
         acc[asset.department] = {
@@ -216,17 +234,17 @@ export default function ReportsSecondary() {
       }
     }
     return acc;
-  }, {});
+  }, {}), [assets]);
 
-  const ageDistribution = {
+  const ageDistribution = useMemo(() => ({
     new: laptops.filter(l => calculateDeviceAge(l.purchaseDate) <= 1).length,
     good: laptops.filter(l => calculateDeviceAge(l.purchaseDate) > 1 && calculateDeviceAge(l.purchaseDate) <= 3).length,
     aging: laptops.filter(l => calculateDeviceAge(l.purchaseDate) > 3 && calculateDeviceAge(l.purchaseDate) <= 5).length,
     old: laptops.filter(l => calculateDeviceAge(l.purchaseDate) > 5).length,
-  };
+  }), [laptops, calculateDeviceAge]);
 
   // Filter assets by date range
-  const dateRangeAssets = assets.filter(asset => {
+  const dateRangeAssets = useMemo(() => assets.filter(asset => {
     // If no date filters are set, return all assets with purchase dates
     if (!dateFrom && !dateTo) {
       if (!asset.purchaseDate) return false;
@@ -276,29 +294,31 @@ export default function ReportsSecondary() {
     }
 
     return true;
-  });
+  }), [assets, dateFrom, dateTo, dateRangeCategoryFilter, dateRangeStatusFilter, dateRangeConditionFilter]);
 
   // Date range statistics
-  const dateRangeStats = {
+  const dateRangeStats = useMemo(() => ({
     total: dateRangeAssets.length,
     laptops: dateRangeAssets.filter(a => a.category?.toLowerCase() === 'laptop').length,
     desktops: dateRangeAssets.filter(a => a.category?.toLowerCase() === 'desktop').length,
     deployed: dateRangeAssets.filter(a => a.status === 'Deployed').length,
     available: dateRangeAssets.filter(a => a.status === 'available' || a.status === 'On-Hand').length
-  };
+  }), [dateRangeAssets]);
 
   // Log for debugging when date filters are active
-  if (dateFrom || dateTo) {
-    console.log('Date Range Filter Active:', {
-      from: dateFrom ? format(dateFrom, 'yyyy-MM-dd') : 'Not set',
-      to: dateTo ? format(dateTo, 'yyyy-MM-dd') : 'Not set',
-      assetsFound: dateRangeAssets.length,
-      stats: dateRangeStats
-    });
-  }
+  useEffect(() => {
+    if (dateFrom || dateTo) {
+      console.log('Date Range Filter Active:', {
+        from: dateFrom ? format(dateFrom, 'yyyy-MM-dd') : 'Not set',
+        to: dateTo ? format(dateTo, 'yyyy-MM-dd') : 'Not set',
+        assetsFound: dateRangeAssets.length,
+        stats: dateRangeStats
+      });
+    }
+  }, [dateFrom, dateTo, dateRangeAssets, dateRangeStats]);
 
   // Get unique Knox IDs from deployed assets
-  const getKnoxIDUsers = () => {
+  const knoxIDUsers = useMemo(() => {
     const deployedAssets = assets.filter(asset => {
       // Only include deployed assets with valid Knox IDs
       const isDeployed = asset.status === 'Deployed';
@@ -316,12 +336,10 @@ export default function ReportsSecondary() {
     });
 
     return knoxIDMap;
-  };
-
-  const knoxIDUsers = getKnoxIDUsers();
+  }, [assets]);
 
   // Category 1: Knox IDs with single 5+ year old laptop (no desktop, only 1 laptop that is 5+ years old)
-  const usersWithOldSingleLaptop = Array.from(knoxIDUsers.entries())
+  const usersWithOldSingleLaptop = useMemo(() => Array.from(knoxIDUsers.entries())
     .filter(([knoxId, userAssets]) => {
       const userLaptops = userAssets.filter(asset =>
         asset.category?.toLowerCase() === 'laptop'
@@ -342,14 +360,14 @@ export default function ReportsSecondary() {
       // Laptop must be 5 years or older
       return deviceAge >= 5;
     })
-    .map(([knoxId, userAssets]) => ({ 
-      knoxId, 
+    .map(([knoxId, userAssets]) => ({
+      knoxId,
       assets: userAssets,
       laptopAge: calculateDeviceAge(userAssets.find(a => a.category?.toLowerCase() === 'laptop')?.purchaseDate)
-    }));
+    })), [knoxIDUsers, calculateDeviceAge]);
 
   // Category 2: Knox IDs with one desktop and a 5+ year old laptop
-  const usersWithDesktopAndOldLaptop = Array.from(knoxIDUsers.entries())
+  const usersWithDesktopAndOldLaptop = useMemo(() => Array.from(knoxIDUsers.entries())
     .filter(([knoxId, userAssets]) => {
       const userLaptops = userAssets.filter(asset =>
         asset.category?.toLowerCase() === 'laptop'
@@ -370,10 +388,10 @@ export default function ReportsSecondary() {
 
       return deviceAge >= 5;
     })
-    .map(([knoxId, userAssets]) => ({ knoxId, assets: userAssets }));
+    .map(([knoxId, userAssets]) => ({ knoxId, assets: userAssets })), [knoxIDUsers, calculateDeviceAge]);
 
   // Category 3: Knox IDs with two laptops but no desktop
-  const usersWithTwoLaptopsNoDesktop = Array.from(knoxIDUsers.entries())
+  const usersWithTwoLaptopsNoDesktop = useMemo(() => Array.from(knoxIDUsers.entries())
     .filter(([knoxId, userAssets]) => {
       const userLaptops = userAssets.filter(asset =>
         asset.category?.toLowerCase() === 'laptop'
@@ -386,17 +404,19 @@ export default function ReportsSecondary() {
       // Must have exactly 2 laptops and 0 desktops
       return userLaptops.length === 2 && userDesktops.length === 0;
     })
-    .map(([knoxId, userAssets]) => ({ knoxId, assets: userAssets }));
+    .map(([knoxId, userAssets]) => ({ knoxId, assets: userAssets })), [knoxIDUsers]);
 
   // Log Knox ID analysis for debugging
-  console.log('Knox ID User Analysis:', {
-    totalKnoxIDs: knoxIDUsers.size,
-    category1Count: usersWithOldSingleLaptop.length,
-    category2Count: usersWithDesktopAndOldLaptop.length,
-    category3Count: usersWithTwoLaptopsNoDesktop.length
-  });
+  useEffect(() => {
+    console.log('Knox ID User Analysis:', {
+      totalKnoxIDs: knoxIDUsers.size,
+      category1Count: usersWithOldSingleLaptop.length,
+      category2Count: usersWithDesktopAndOldLaptop.length,
+      category3Count: usersWithTwoLaptopsNoDesktop.length
+    });
+  }, [knoxIDUsers, usersWithOldSingleLaptop, usersWithDesktopAndOldLaptop, usersWithTwoLaptopsNoDesktop]);
 
-  const exportToExcel = (data: any[], filename: string, sheetName: string) => {
+  const exportToExcel = useCallback((data: any[], filename: string, sheetName: string) => {
     if (!data || data.length === 0) {
       toast({
         title: "Export Error",
@@ -532,9 +552,9 @@ export default function ReportsSecondary() {
         variant: "destructive",
       });
     }
-  };
+  }, [toast]);
 
-  const exportData = (format: 'csv' | 'excel' | 'json') => {
+  const exportData = useCallback((format: 'csv' | 'excel' | 'json') => {
     const data = {
       summary: {
         totalAssets: assets.length,
@@ -565,9 +585,9 @@ export default function ReportsSecondary() {
         description: `Analytics report exported as ${format.toUpperCase()}`,
       });
     }
-  };
+  }, [assets, laptops, desktops, deployedAssets, availableAssets, goodCondition, badCondition, laptopStats, desktopStats, departmentData, ageDistribution, toast]);
 
-  const MetricCard = ({ title, value, subtitle, icon: Icon, color = "blue" }: any) => (
+  const MetricCard = useCallback(({ title, value, subtitle, icon: Icon, color = "blue" }: any) => (
     <Card className="hover:shadow-lg transition-all duration-300 border-l-4" style={{ borderLeftColor: `var(--${color}-500)` }}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
@@ -582,9 +602,9 @@ export default function ReportsSecondary() {
         </div>
       </CardContent>
     </Card>
-  );
+  ), []);
 
-  const ProgressBar = ({ label, value, total, color = 'blue' }: any) => {
+  const ProgressBar = useCallback(({ label, value, total, color = 'blue' }: any) => {
     const percentage = total > 0 ? (value / total) * 100 : 0;
     return (
       <div className="space-y-2">
@@ -603,7 +623,15 @@ export default function ReportsSecondary() {
         </div>
       </div>
     );
-  };
+  }, []);
+
+  if (isLoadingAssets || isLoadingUsers || isLoadingActivities || isLoadingConsumables || isLoadingLicenses) {
+    return <div className="min-h-screen flex items-center justify-center text-lg font-semibold">Loading reports...</div>;
+  }
+
+  if (isErrorAssets) {
+    return <div className="min-h-screen flex items-center justify-center text-lg font-semibold text-red-600">Error loading assets. Please try again later.</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
@@ -805,7 +833,7 @@ export default function ReportsSecondary() {
                         <div className="text-center">
                           <p className="text-sm text-gray-600 mb-1">Overall Health Score</p>
                           <p className="text-4xl font-bold text-green-600">
-                            {Math.round((goodCondition.length / assets.length) * 100)}%
+                            {assets.length > 0 ? Math.round((goodCondition.length / assets.length) * 100) : 0}%
                           </p>
                         </div>
                       </div>
@@ -1222,9 +1250,9 @@ export default function ReportsSecondary() {
                           'Location': asset.location || 'N/A'
                         }));
 
-                        const dateRangeText = dateFrom && dateTo 
+                        const dateRangeText = dateFrom && dateTo
                           ? `${format(dateFrom, 'yyyy-MM-dd')}-to-${format(dateTo, 'yyyy-MM-dd')}`
-                          : dateFrom 
+                          : dateFrom
                             ? `from-${format(dateFrom, 'yyyy-MM-dd')}`
                             : dateTo
                               ? `to-${format(dateTo, 'yyyy-MM-dd')}`
@@ -1246,9 +1274,9 @@ export default function ReportsSecondary() {
                       Purchase Date Range Report
                       {(dateFrom || dateTo) && (
                         <Badge className="ml-2 bg-orange-600">
-                          {dateFrom && dateTo 
+                          {dateFrom && dateTo
                             ? `${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`
-                            : dateFrom 
+                            : dateFrom
                               ? `From ${format(dateFrom, 'MMM dd, yyyy')}`
                               : `To ${format(dateTo, 'MMM dd, yyyy')}`
                           }
@@ -1283,8 +1311,8 @@ export default function ReportsSecondary() {
                     {dateRangeAssets.length > 0 ? (
                       <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
                         {dateRangeAssets.map((asset) => (
-                          <div 
-                            key={asset.id} 
+                          <div
+                            key={asset.id}
                             onClick={() => navigateWithFilters({ search: asset.assetTag })}
                             className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
                           >
@@ -1344,7 +1372,7 @@ export default function ReportsSecondary() {
                         <CalendarIcon className="h-16 w-16 mx-auto text-gray-300 mb-3" />
                         <p className="text-lg font-medium text-gray-600">No Assets Found</p>
                         <p className="text-sm text-gray-500 mt-2">
-                          {dateFrom || dateTo 
+                          {dateFrom || dateTo
                             ? 'No assets purchased in the selected date range'
                             : 'Please select a date range to view purchased assets'
                           }
@@ -1357,234 +1385,6 @@ export default function ReportsSecondary() {
 
               {/* User Analysis Tab */}
               <TabsContent value="users" className="space-y-6 mt-0">
-                {/* Total Overview Section */}
-                <Card className="border-2 border-blue-100">
-                  <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-100">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Users className="h-5 w-5 text-blue-600" />
-                      User Analysis Overview - All Criteria
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-xl border-2 border-indigo-200">
-                        <p className="text-sm text-indigo-700 mb-1">Category 1</p>
-                        <p className="text-3xl font-bold text-indigo-900">{usersWithOldSingleLaptop.length}</p>
-                        <p className="text-xs text-indigo-600 mt-2">Single 5+ Year Old Laptop</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border-2 border-purple-200">
-                        <p className="text-sm text-purple-700 mb-1">Category 2</p>
-                        <p className="text-3xl font-bold text-purple-900">{usersWithDesktopAndOldLaptop.length}</p>
-                        <p className="text-xs text-purple-600 mt-2">Desktop + 5+ Year Old Laptop</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border-2 border-green-200">
-                        <p className="text-sm text-green-700 mb-1">Category 3</p>
-                        <p className="text-3xl font-bold text-green-900">{usersWithTwoLaptopsNoDesktop.length}</p>
-                        <p className="text-xs text-green-600 mt-2">Two 5+ Year Old Laptops</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl border-2 border-orange-200">
-                        <p className="text-sm text-orange-700 mb-1">Category 4</p>
-                        <p className="text-3xl font-bold text-orange-900">
-                          {Array.from(knoxIDUsers.entries()).filter(([knoxId, userAssets]) => {
-                            const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                            const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                            if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                            const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                            const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                            return hasOldLaptop && hasNewLaptop;
-                          }).length}
-                        </p>
-                        <p className="text-xs text-orange-600 mt-2">2 Laptops + Desktop</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      // Build comprehensive export data with all device details
-                      const exportData = [];
-
-                      // Category 1: Single 5+ Year Old Laptop
-                      usersWithOldSingleLaptop.forEach(({ knoxId, assets: userAssets }) => {
-                        const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
-                        if (laptop) {
-                          exportData.push({
-                            'Category': 'Single 5+ Year Old Laptop',
-                            'Knox ID': knoxId || 'N/A',
-                            'Department': laptop?.department || 'N/A',
-                            'Asset Tag': laptop?.assetTag || 'N/A',
-                            'Device Name': laptop?.name || 'N/A',
-                            'Model': laptop?.model || 'N/A',
-                            'Serial Number': laptop?.serialNumber || 'N/A',
-                            'Manufacturer': laptop?.manufacturer || 'N/A',
-                            'Device Age': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) + ' years' : 'N/A',
-                            'Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'Status': laptop?.status || 'N/A',
-                            'Condition': laptop?.condition || 'N/A',
-                            'Location': laptop?.location || 'N/A',
-                            'IP Address': laptop?.ipAddress || 'N/A',
-                            'MAC Address': laptop?.macAddress || 'N/A',
-                            'OS Type': laptop?.osType || 'N/A',
-                            'Assigned To': laptop?.assignedTo || 'N/A',
-                            'Cost': laptop?.cost || 'N/A',
-                            'Warranty': laptop?.warrantyExpiration || 'N/A'
-                          });
-                        }
-                      });
-
-                      // Category 2: Desktop + 5+ Year Old Laptop
-                      usersWithDesktopAndOldLaptop.forEach(({ knoxId, assets: userAssets }) => {
-                        const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
-                        const desktop = userAssets.find(a => a.category?.toLowerCase() === 'desktop');
-
-                        exportData.push({
-                          'Category': 'Desktop + 5+ Year Old Laptop',
-                          'Knox ID': knoxId || 'N/A',
-                          'Department': laptop?.department || desktop?.department || 'N/A',
-                          'Laptop Asset Tag': laptop?.assetTag || 'N/A',
-                          'Laptop Name': laptop?.name || 'N/A',
-                          'Laptop Model': laptop?.model || 'N/A',
-                          'Laptop Serial Number': laptop?.serialNumber || 'N/A',
-                          'Laptop Manufacturer': laptop?.manufacturer || 'N/A',
-                          'Laptop Age': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) + ' years' : 'N/A',
-                          'Laptop Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Laptop Status': laptop?.status || 'N/A',
-                          'Laptop Condition': laptop?.condition || 'N/A',
-                          'Laptop Location': laptop?.location || 'N/A',
-                          'Laptop IP Address': laptop?.ipAddress || 'N/A',
-                          'Laptop MAC Address': laptop?.macAddress || 'N/A',
-                          'Laptop OS Type': laptop?.osType || 'N/A',
-                          'Laptop Assigned To': laptop?.assignedTo || 'N/A',
-                          'Laptop Cost': laptop?.cost || 'N/A',
-                          'Desktop Asset Tag': desktop?.assetTag || 'N/A',
-                          'Desktop Name': desktop?.name || 'N/A',
-                          'Desktop Model': desktop?.model || 'N/A',
-                          'Desktop Serial Number': desktop?.serialNumber || 'N/A',
-                          'Desktop Manufacturer': desktop?.manufacturer || 'N/A',
-                          'Desktop Status': desktop?.status || 'N/A',
-                          'Desktop Condition': desktop?.condition || 'N/A',
-                          'Desktop Location': desktop?.location || 'N/A',
-                          'Desktop IP Address': desktop?.ipAddress || 'N/A',
-                          'Desktop MAC Address': desktop?.macAddress || 'N/A',
-                          'Desktop Assigned To': desktop?.assignedTo || 'N/A',
-                          'Desktop Cost': desktop?.cost || 'N/A'
-                        });
-                      });
-
-                      // Category 3: Two Laptops, No Desktop
-                      usersWithTwoLaptopsNoDesktop.forEach(({ knoxId, assets: userAssets }) => {
-                        const userLaptops = userAssets.filter(a => a.category?.toLowerCase() === 'laptop');
-                        const laptop1 = userLaptops[0];
-                        const laptop2 = userLaptops[1];
-
-                        exportData.push({
-                          'Category': 'Two Laptops, No Desktop',
-                          'Knox ID': knoxId || 'N/A',
-                          'Department': laptop1?.department || laptop2?.department || 'N/A',
-                          'Laptop 1 Asset Tag': laptop1?.assetTag || 'N/A',
-                          'Laptop 1 Name': laptop1?.name || 'N/A',
-                          'Laptop 1 Model': laptop1?.model || 'N/A',
-                          'Laptop 1 Serial Number': laptop1?.serialNumber || 'N/A',
-                          'Laptop 1 Manufacturer': laptop1?.manufacturer || 'N/A',
-                          'Laptop 1 Status': laptop1?.status || 'N/A',
-                          'Laptop 1 Condition': laptop1?.condition || 'N/A',
-                          'Laptop 1 Location': laptop1?.location || 'N/A',
-                          'Laptop 1 IP Address': laptop1?.ipAddress || 'N/A',
-                          'Laptop 1 MAC Address': laptop1?.macAddress || 'N/A',
-                          'Laptop 1 OS Type': laptop1?.osType || 'N/A',
-                          'Laptop 1 Assigned To': laptop1?.assignedTo || 'N/A',
-                          'Laptop 1 Purchase Date': laptop1?.purchaseDate ? format(new Date(laptop1.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Laptop 1 Age': laptop1?.purchaseDate ? calculateDeviceAge(laptop1.purchaseDate) + ' years' : 'N/A',
-                          'Laptop 2 Asset Tag': laptop2?.assetTag || 'N/A',
-                          'Laptop 2 Name': laptop2?.name || 'N/A',
-                          'Laptop 2 Model': laptop2?.model || 'N/A',
-                          'Laptop 2 Serial Number': laptop2?.serialNumber || 'N/A',
-                          'Laptop 2 Manufacturer': laptop2?.manufacturer || 'N/A',
-                          'Laptop 2 Status': laptop2?.status || 'N/A',
-                          'Laptop 2 Condition': laptop2?.condition || 'N/A',
-                          'Laptop 2 Location': laptop2?.location || 'N/A',
-                          'Laptop 2 IP Address': laptop2?.ipAddress || 'N/A',
-                          'Laptop 2 MAC Address': laptop2?.macAddress || 'N/A',
-                          'Laptop 2 OS Type': laptop2?.osType || 'N/A',
-                          'Laptop 2 Assigned To': laptop2?.assignedTo || 'N/A',
-                          'Laptop 2 Purchase Date': laptop2?.purchaseDate ? format(new Date(laptop2.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Laptop 2 Age': laptop2?.purchaseDate ? calculateDeviceAge(laptop2.purchaseDate) + ' years' : 'N/A'
-                        });
-                      });
-
-                      // Category 4: Two Laptops + Desktop
-                      Array.from(knoxIDUsers.entries())
-                        .filter(([knoxId, userAssets]) => {
-                          const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                          const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                          if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                          const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                          const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                          return hasOldLaptop && hasNewLaptop;
-                        })
-                        .forEach(([knoxId, userAssets]) => {
-                          const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                          const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
-                          const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                          const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
-
-                          exportData.push({
-                            'Category': 'Two Laptops + One Desktop',
-                            'Knox ID': knoxId || 'N/A',
-                            'Department': oldLaptop?.department || newLaptop?.department || userDesktop?.department || 'N/A',
-                            'Old Laptop Asset Tag': oldLaptop?.assetTag || 'N/A',
-                            'Old Laptop Name': oldLaptop?.name || 'N/A',
-                            'Old Laptop Model': oldLaptop?.model || 'N/A',
-                            'Old Laptop Serial Number': oldLaptop?.serialNumber || 'N/A',
-                            'Old Laptop Manufacturer': oldLaptop?.manufacturer || 'N/A',
-                            'Old Laptop Status': oldLaptop?.status || 'N/A',
-                            'Old Laptop Condition': oldLaptop?.condition || 'N/A',
-                            'Old Laptop Location': oldLaptop?.location || 'N/A',
-                            'Old Laptop IP Address': oldLaptop?.ipAddress || 'N/A',
-                            'Old Laptop MAC Address': oldLaptop?.macAddress || 'N/A',
-                            'Old Laptop Assigned To': oldLaptop?.assignedTo || 'N/A',
-                            'Old Laptop Purchase Date': oldLaptop?.purchaseDate ? format(new Date(oldLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'Old Laptop Age': oldLaptop?.purchaseDate ? calculateDeviceAge(oldLaptop.purchaseDate) + ' years' : 'N/A',
-                            'New Laptop Asset Tag': newLaptop?.assetTag || 'N/A',
-                            'New Laptop Name': newLaptop?.name || 'N/A',
-                            'New Laptop Model': newLaptop?.model || 'N/A',
-                            'New Laptop Serial Number': newLaptop?.serialNumber || 'N/A',
-                            'New Laptop Manufacturer': newLaptop?.manufacturer || 'N/A',
-                            'New Laptop Status': newLaptop?.status || 'N/A',
-                            'New Laptop Condition': newLaptop?.condition || 'N/A',
-                            'New Laptop Location': newLaptop?.location || 'N/A',
-                            'New Laptop IP Address': newLaptop?.ipAddress || 'N/A',
-                            'New Laptop MAC Address': newLaptop?.macAddress || 'N/A',
-                            'New Laptop Assigned To': newLaptop?.assignedTo || 'N/A',
-                            'New Laptop Purchase Date': newLaptop?.purchaseDate ? format(new Date(newLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'New Laptop Age': newLaptop?.purchaseDate ? calculateDeviceAge(newLaptop.purchaseDate) + ' years' : 'N/A',
-                            'Desktop Asset Tag': userDesktop?.assetTag || 'N/A',
-                            'Desktop Name': userDesktop?.name || 'N/A',
-                            'Desktop Model': userDesktop?.model || 'N/A',
-                            'Desktop Serial Number': userDesktop?.serialNumber || 'N/A',
-                            'Desktop Manufacturer': userDesktop?.manufacturer || 'N/A',
-                            'Desktop Status': userDesktop?.status || 'N/A',
-                            'Desktop Condition': userDesktop?.condition || 'N/A',
-                            'Desktop Location': userDesktop?.location || 'N/A',
-                            'Desktop IP Address': userDesktop?.ipAddress || 'N/A',
-                            'Desktop MAC Address': userDesktop?.macAddress || 'N/A',
-                            'Desktop Assigned To': userDesktop?.assignedTo || 'N/A'
-                          });
-                        });
-
-                      exportToExcel(exportData, `user-analysis-${format(new Date(), 'yyyy-MM-dd')}`, 'User Analysis');
-                    }}
-                    className="hover:bg-indigo-50 hover:border-indigo-300"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export All User Analysis
-                  </Button>
-                </div>
-
                 <Tabs defaultValue="category1" className="w-full">
                   <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="category1">Single Old Laptop ({usersWithOldSingleLaptop.length})</TabsTrigger>
@@ -1620,26 +1420,26 @@ export default function ReportsSecondary() {
                                   'Category': 'Single 5+ Year Old Laptop',
                                   'Knox ID': knoxId || 'N/A',
                                   'Department': laptop?.department || 'N/A',
-                                  
+
                                   // Device Identification
                                   'Asset Tag': laptop?.assetTag || 'N/A',
                                   'Device Name': laptop?.name || 'N/A',
                                   'Serial Number': laptop?.serialNumber || 'N/A',
                                   'Model': laptop?.model || 'N/A',
                                   'Manufacturer': laptop?.manufacturer || 'N/A',
-                                  
+
                                   // Device Status & Age
                                   'Status': laptop?.status || 'N/A',
                                   'Condition': laptop?.condition || 'N/A',
                                   'Device Age (Years)': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) : 'N/A',
                                   'Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
+
                                   // Network & Location
                                   'Location': laptop?.location || 'N/A',
                                   'IP Address': laptop?.ipAddress || 'N/A',
                                   'MAC Address': laptop?.macAddress || 'N/A',
                                   'OS Type': laptop?.osType || 'N/A',
-                                  
+
                                   // Assignment & Financial
                                   'Assigned To': laptop?.assignedTo || 'N/A',
                                   'Cost': laptop?.cost || 'N/A',
@@ -1668,67 +1468,69 @@ export default function ReportsSecondary() {
                         </div>
 
                         {usersWithOldSingleLaptop.length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {usersWithOldSingleLaptop.map(({ knoxId, assets: userAssets }) => {
-                              const userLaptop = userAssets.find(asset =>
-                                asset.category?.toLowerCase() === 'laptop'
-                              );
-                              const deviceAge = calculateDeviceAge(userLaptop?.purchaseDate);
+                          <>
+                            <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                              {usersWithOldSingleLaptop.map(({ knoxId, assets: userAssets }) => {
+                                const userLaptop = userAssets.find(asset =>
+                                  asset.category?.toLowerCase() === 'laptop'
+                                );
+                                const deviceAge = calculateDeviceAge(userLaptop?.purchaseDate);
 
-                              return (
-                                <div 
-                                  key={knoxId} 
-                                  onClick={() => navigateWithFilters({ search: knoxId })}
-                                  className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-lg">
-                                        Knox ID: {knoxId}
-                                      </h4>
-                                      <Badge className="mt-2 bg-indigo-100 text-indigo-800 border-indigo-300">
-                                        {userLaptop?.department || 'No Department'}
+                                return (
+                                  <div
+                                    key={knoxId}
+                                    onClick={() => navigateWithFilters({ search: knoxId })}
+                                    className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+                                  >
+                                    <div className="flex items-start justify-between mb-4">
+                                      <div className="flex-1">
+                                        <h4 className="font-semibold text-gray-900 text-lg">
+                                          Knox ID: {knoxId}
+                                        </h4>
+                                        <Badge className="mt-2 bg-indigo-100 text-indigo-800 border-indigo-300">
+                                          {userLaptop?.department || 'No Department'}
+                                        </Badge>
+                                      </div>
+                                      <Badge className="bg-red-100 text-red-800 border-red-300">
+                                        {deviceAge} years old
                                       </Badge>
                                     </div>
-                                    <Badge className="bg-red-100 text-red-800 border-red-300">
-                                      {deviceAge} years old
-                                    </Badge>
-                                  </div>
 
-                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.assetTag || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Device Name</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.name || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Model</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.model || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.serialNumber || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Purchase Date</p>
-                                      <p className="text-sm font-medium text-gray-900">
-                                        {userLaptop?.purchaseDate ? format(new Date(userLaptop.purchaseDate), 'MMM dd, yyyy') : 'N/A'}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Condition</p>
-                                      <Badge className={userLaptop?.condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                        {userLaptop?.condition || 'N/A'}
-                                      </Badge>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+                                      <div>
+                                        <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                        <p className="text-sm font-medium text-gray-900">{userLaptop?.assetTag || 'N/A'}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 mb-1">Device Name</p>
+                                        <p className="text-sm font-medium text-gray-900">{userLaptop?.name || 'N/A'}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 mb-1">Model</p>
+                                        <p className="text-sm font-medium text-gray-900">{userLaptop?.model || 'N/A'}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                        <p className="text-sm font-medium text-gray-900">{userLaptop?.serialNumber || 'N/A'}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 mb-1">Purchase Date</p>
+                                        <p className="text-sm font-medium text-gray-900">
+                                          {userLaptop?.purchaseDate ? format(new Date(userLaptop.purchaseDate), 'MMM dd, yyyy') : 'N/A'}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 mb-1">Condition</p>
+                                        <Badge className={userLaptop?.condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                          {userLaptop?.condition || 'N/A'}
+                                        </Badge>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                );
+                              })}
+                            </div>
+                          </>
                         ) : (
                           <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
                             <Laptop className="h-16 w-16 mx-auto text-gray-300 mb-3" />
@@ -1764,7 +1566,7 @@ export default function ReportsSecondary() {
                                   'Category': 'Desktop + 5+ Year Old Laptop',
                                   'Knox ID': knoxId || 'N/A',
                                   'Department': laptop?.department || desktop?.department || 'N/A',
-                                  
+
                                   // === LAPTOP DETAILS ===
                                   // Laptop Identification
                                   'Laptop - Asset Tag': laptop?.assetTag || 'N/A',
@@ -1772,23 +1574,23 @@ export default function ReportsSecondary() {
                                   'Laptop - Serial Number': laptop?.serialNumber || 'N/A',
                                   'Laptop - Model': laptop?.model || 'N/A',
                                   'Laptop - Manufacturer': laptop?.manufacturer || 'N/A',
-                                  
+
                                   // Laptop Status & Age
                                   'Laptop - Status': laptop?.status || 'N/A',
                                   'Laptop - Condition': laptop?.condition || 'N/A',
                                   'Laptop - Age (Years)': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) : 'N/A',
                                   'Laptop - Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
+
                                   // Laptop Network & Location
                                   'Laptop - Location': laptop?.location || 'N/A',
                                   'Laptop - IP Address': laptop?.ipAddress || 'N/A',
                                   'Laptop - MAC Address': laptop?.macAddress || 'N/A',
                                   'Laptop - OS Type': laptop?.osType || 'N/A',
-                                  
+
                                   // Laptop Assignment & Financial
                                   'Laptop - Assigned To': laptop?.assignedTo || 'N/A',
                                   'Laptop - Cost': laptop?.cost || 'N/A',
-                                  
+
                                   // === DESKTOP DETAILS ===
                                   // Desktop Identification
                                   'Desktop - Asset Tag': desktop?.assetTag || 'N/A',
@@ -1796,16 +1598,16 @@ export default function ReportsSecondary() {
                                   'Desktop - Serial Number': desktop?.serialNumber || 'N/A',
                                   'Desktop - Model': desktop?.model || 'N/A',
                                   'Desktop - Manufacturer': desktop?.manufacturer || 'N/A',
-                                  
+
                                   // Desktop Status
                                   'Desktop - Status': desktop?.status || 'N/A',
                                   'Desktop - Condition': desktop?.condition || 'N/A',
-                                  
+
                                   // Desktop Network & Location
                                   'Desktop - Location': desktop?.location || 'N/A',
                                   'Desktop - IP Address': desktop?.ipAddress || 'N/A',
                                   'Desktop - MAC Address': desktop?.macAddress || 'N/A',
-                                  
+
                                   // Desktop Assignment & Financial
                                   'Desktop - Assigned To': desktop?.assignedTo || 'N/A',
                                   'Desktop - Cost': desktop?.cost || 'N/A'
@@ -1833,83 +1635,85 @@ export default function ReportsSecondary() {
                         </div>
 
                         {usersWithDesktopAndOldLaptop.length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {usersWithDesktopAndOldLaptop.map(({ knoxId, assets: userAssets }) => {
-                              const userLaptop = userAssets.find(asset =>
-                                asset.category?.toLowerCase() === 'laptop'
-                              );
-                              const userDesktop = userAssets.find(asset =>
-                                asset.category?.toLowerCase() === 'desktop'
-                              );
-                              const laptopAge = calculateDeviceAge(userLaptop?.purchaseDate);
+                          <>
+                            <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                              {usersWithDesktopAndOldLaptop.map(({ knoxId, assets: userAssets }) => {
+                                const userLaptop = userAssets.find(asset =>
+                                  asset.category?.toLowerCase() === 'laptop'
+                                );
+                                const userDesktop = userAssets.find(asset =>
+                                  asset.category?.toLowerCase() === 'desktop'
+                                );
+                                const laptopAge = calculateDeviceAge(userLaptop?.purchaseDate);
 
-                              return (
-                                <div 
-                                  key={knoxId} 
-                                  onClick={() => navigateWithFilters({ search: knoxId })}
-                                  className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-lg">
-                                        Knox ID: {knoxId}
-                                      </h4>
-                                      <Badge className="mt-2 bg-purple-100 text-purple-800 border-purple-300">
-                                        {userLaptop?.department || 'No Department'}
+                                return (
+                                  <div
+                                    key={knoxId}
+                                    onClick={() => navigateWithFilters({ search: knoxId })}
+                                    className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+                                  >
+                                    <div className="flex items-start justify-between mb-4">
+                                      <div className="flex-1">
+                                        <h4 className="font-semibold text-gray-900 text-lg">
+                                          Knox ID: {knoxId}
+                                        </h4>
+                                        <Badge className="mt-2 bg-purple-100 text-purple-800 border-purple-300">
+                                          {userLaptop?.department || 'No Department'}
+                                        </Badge>
+                                      </div>
+                                      <Badge className="bg-orange-100 text-orange-800 border-orange-300">
+                                        Laptop: {laptopAge} years old
                                       </Badge>
                                     </div>
-                                    <Badge className="bg-orange-100 text-orange-800 border-orange-300">
-                                      Laptop: {laptopAge} years old
-                                    </Badge>
-                                  </div>
 
-                                  <div className="space-y-4">
-                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                                      <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-2">
-                                        <Laptop className="h-4 w-4" />
-                                        LAPTOP DETAILS
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{userLaptop?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{userLaptop?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{userLaptop?.serialNumber || 'N/A'}</p>
+                                    <div className="space-y-4">
+                                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                        <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-2">
+                                          <Laptop className="h-4 w-4" />
+                                          LAPTOP DETAILS
+                                        </p>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                            <p className="text-sm font-medium text-gray-900">{userLaptop?.assetTag || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Model</p>
+                                            <p className="text-sm font-medium text-gray-900">{userLaptop?.model || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                            <p className="text-sm font-medium text-gray-900">{userLaptop?.serialNumber || 'N/A'}</p>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
 
-                                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                      <p className="text-xs font-semibold text-green-700 mb-3 flex items-center gap-2">
-                                        <Monitor className="h-4 w-4" />
-                                        DESKTOP DETAILS
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{userDesktop?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{userDesktop?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{userDesktop?.serialNumber || 'N/A'}</p>
+                                      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                        <p className="text-xs font-semibold text-green-700 mb-3 flex items-center gap-2">
+                                          <Monitor className="h-4 w-4" />
+                                          DESKTOP DETAILS
+                                        </p>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.assetTag || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Model</p>
+                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.model || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.serialNumber || 'N/A'}</p>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                );
+                              })}
+                            </div>
+                          </>
                         ) : (
                           <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
                             <Monitor className="h-16 w-16 mx-auto text-gray-300 mb-3" />
@@ -1946,7 +1750,7 @@ export default function ReportsSecondary() {
                                   'Category': 'Two Laptops, No Desktop',
                                   'Knox ID': knoxId || 'N/A',
                                   'Department': laptop1?.department || laptop2?.department || 'N/A',
-                                  
+
                                   // === LAPTOP 1 DETAILS ===
                                   // Laptop 1 Identification
                                   'Laptop 1 - Asset Tag': laptop1?.assetTag || 'N/A',
@@ -1954,20 +1758,20 @@ export default function ReportsSecondary() {
                                   'Laptop 1 - Serial Number': laptop1?.serialNumber || 'N/A',
                                   'Laptop 1 - Model': laptop1?.model || 'N/A',
                                   'Laptop 1 - Manufacturer': laptop1?.manufacturer || 'N/A',
-                                  
+
                                   // Laptop 1 Status & Age
                                   'Laptop 1 - Status': laptop1?.status || 'N/A',
                                   'Laptop 1 - Condition': laptop1?.condition || 'N/A',
                                   'Laptop 1 - Age (Years)': laptop1?.purchaseDate ? calculateDeviceAge(laptop1.purchaseDate) : 'N/A',
                                   'Laptop 1 - Purchase Date': laptop1?.purchaseDate ? format(new Date(laptop1.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
+
                                   // Laptop 1 Network & Location
                                   'Laptop 1 - Location': laptop1?.location || 'N/A',
                                   'Laptop 1 - IP Address': laptop1?.ipAddress || 'N/A',
                                   'Laptop 1 - MAC Address': laptop1?.macAddress || 'N/A',
                                   'Laptop 1 - OS Type': laptop1?.osType || 'N/A',
                                   'Laptop 1 - Assigned To': laptop1?.assignedTo || 'N/A',
-                                  
+
                                   // === LAPTOP 2 DETAILS ===
                                   // Laptop 2 Identification
                                   'Laptop 2 - Asset Tag': laptop2?.assetTag || 'N/A',
@@ -1975,13 +1779,13 @@ export default function ReportsSecondary() {
                                   'Laptop 2 - Serial Number': laptop2?.serialNumber || 'N/A',
                                   'Laptop 2 - Model': laptop2?.model || 'N/A',
                                   'Laptop 2 - Manufacturer': laptop2?.manufacturer || 'N/A',
-                                  
+
                                   // Laptop 2 Status & Age
                                   'Laptop 2 - Status': laptop2?.status || 'N/A',
                                   'Laptop 2 - Condition': laptop2?.condition || 'N/A',
                                   'Laptop 2 - Age (Years)': laptop2?.purchaseDate ? calculateDeviceAge(laptop2.purchaseDate) : 'N/A',
                                   'Laptop 2 - Purchase Date': laptop2?.purchaseDate ? format(new Date(laptop2.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
+
                                   // Laptop 2 Network & Location
                                   'Laptop 2 - Location': laptop2?.location || 'N/A',
                                   'Laptop 2 - IP Address': laptop2?.ipAddress || 'N/A',
@@ -2012,85 +1816,87 @@ export default function ReportsSecondary() {
                         </div>
 
                         {usersWithTwoLaptopsNoDesktop.length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {usersWithTwoLaptopsNoDesktop.map(({ knoxId, assets: userAssets }) => {
-                              const userLaptops = userAssets.filter(asset =>
-                                asset.category?.toLowerCase() === 'laptop'
-                              );
-                              const laptop1 = userLaptops[0];
-                              const laptop2 = userLaptops[1];
-                              const laptop1Age = calculateDeviceAge(laptop1?.purchaseDate);
-                              const laptop2Age = calculateDeviceAge(laptop2?.purchaseDate);
+                          <>
+                            <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                              {usersWithTwoLaptopsNoDesktop.map(({ knoxId, assets: userAssets }) => {
+                                const userLaptops = userAssets.filter(asset =>
+                                  asset.category?.toLowerCase() === 'laptop'
+                                );
+                                const laptop1 = userLaptops[0];
+                                const laptop2 = userLaptops[1];
+                                const laptop1Age = calculateDeviceAge(laptop1?.purchaseDate);
+                                const laptop2Age = calculateDeviceAge(laptop2?.purchaseDate);
 
-                              return (
-                                <div 
-                                  key={knoxId} 
-                                  onClick={() => navigateWithFilters({ search: knoxId })}
-                                  className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-lg">
-                                        Knox ID: {knoxId}
-                                      </h4>
-                                      <Badge className="mt-2 bg-green-100 text-green-800 border-green-300">
-                                        {laptop1?.department || 'No Department'}
-                                      </Badge>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Badge className="bg-blue-100 text-blue-800 border-blue-300">
-                                        2 Laptops
-                                      </Badge>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-4">
-                                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                                      <p className="text-xs font-semibold text-indigo-700 mb-3 flex items-center gap-2">
-                                        <Laptop className="h-4 w-4" />
-                                        LAPTOP 1 - {laptop1Age} years old
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop1?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop1?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop1?.serialNumber || 'N/A'}</p>
-                                        </div>
+                                return (
+                                  <div
+                                    key={knoxId}
+                                    onClick={() => navigateWithFilters({ search: knoxId })}
+                                    className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
+                                  >
+                                    <div className="flex items-start justify-between mb-4">
+                                      <div className="flex-1">
+                                        <h4 className="font-semibold text-gray-900 text-lg">
+                                          Knox ID: {knoxId}
+                                        </h4>
+                                        <Badge className="mt-2 bg-green-100 text-green-800 border-green-300">
+                                          {laptop1?.department || 'No Department'}
+                                        </Badge>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Badge className="bg-blue-100 text-blue-800 border-blue-300">
+                                          2 Laptops
+                                        </Badge>
                                       </div>
                                     </div>
 
-                                    <div className="bg-cyan-50 p-4 rounded-lg border border-cyan-200">
-                                      <p className="text-xs font-semibold text-cyan-700 mb-3 flex items-center gap-2">
-                                        <Laptop className="h-4 w-4" />
-                                        LAPTOP 2 - {laptop2Age} years old
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop2?.assetTag || 'N/A'}</p>
+                                    <div className="space-y-4">
+                                      <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                                        <p className="text-xs font-semibold text-indigo-700 mb-3 flex items-center gap-2">
+                                          <Laptop className="h-4 w-4" />
+                                          LAPTOP 1 - {laptop1Age} years old
+                                        </p>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                            <p className="text-sm font-medium text-gray-900">{laptop1?.assetTag || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Model</p>
+                                            <p className="text-sm font-medium text-gray-900">{laptop1?.model || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                            <p className="text-sm font-medium text-gray-900">{laptop1?.serialNumber || 'N/A'}</p>
+                                          </div>
                                         </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop2?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop2?.serialNumber || 'N/A'}</p>
+                                      </div>
+
+                                      <div className="bg-cyan-50 p-4 rounded-lg border border-cyan-200">
+                                        <p className="text-xs font-semibold text-cyan-700 mb-3 flex items-center gap-2">
+                                          <Laptop className="h-4 w-4" />
+                                          LAPTOP 2 - {laptop2Age} years old
+                                        </p>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                            <p className="text-sm font-medium text-gray-900">{laptop2?.assetTag || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Model</p>
+                                            <p className="text-sm font-medium text-gray-900">{laptop2?.model || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                            <p className="text-sm font-medium text-gray-900">{laptop2?.serialNumber || 'N/A'}</p>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                );
+                              })}
+                            </div>
+                          </>
                         ) : (
                           <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
                             <Laptop className="h-16 w-16 mx-auto text-gray-300 mb-3" />
@@ -2137,7 +1943,7 @@ export default function ReportsSecondary() {
                                     'Category': 'Two Laptops + One Desktop',
                                     'Knox ID': knoxId || 'N/A',
                                     'Department': oldLaptop?.department || newLaptop?.department || userDesktop?.department || 'N/A',
-                                    
+
                                     // === OLD LAPTOP (5+ Years) ===
                                     // Old Laptop Identification
                                     'Old Laptop - Asset Tag': oldLaptop?.assetTag || 'N/A',
@@ -2145,19 +1951,19 @@ export default function ReportsSecondary() {
                                     'Old Laptop - Serial Number': oldLaptop?.serialNumber || 'N/A',
                                     'Old Laptop - Model': oldLaptop?.model || 'N/A',
                                     'Old Laptop - Manufacturer': oldLaptop?.manufacturer || 'N/A',
-                                    
+
                                     // Old Laptop Status & Age
                                     'Old Laptop - Status': oldLaptop?.status || 'N/A',
                                     'Old Laptop - Condition': oldLaptop?.condition || 'N/A',
                                     'Old Laptop - Age (Years)': oldLaptop?.purchaseDate ? calculateDeviceAge(oldLaptop.purchaseDate) : 'N/A',
                                     'Old Laptop - Purchase Date': oldLaptop?.purchaseDate ? format(new Date(oldLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                    
+
                                     // Old Laptop Network & Location
                                     'Old Laptop - Location': oldLaptop?.location || 'N/A',
                                     'Old Laptop - IP Address': oldLaptop?.ipAddress || 'N/A',
                                     'Old Laptop - MAC Address': oldLaptop?.macAddress || 'N/A',
                                     'Old Laptop - Assigned To': oldLaptop?.assignedTo || 'N/A',
-                                    
+
                                     // === NEW LAPTOP (<5 Years) ===
                                     // New Laptop Identification
                                     'New Laptop - Asset Tag': newLaptop?.assetTag || 'N/A',
@@ -2165,19 +1971,19 @@ export default function ReportsSecondary() {
                                     'New Laptop - Serial Number': newLaptop?.serialNumber || 'N/A',
                                     'New Laptop - Model': newLaptop?.model || 'N/A',
                                     'New Laptop - Manufacturer': newLaptop?.manufacturer || 'N/A',
-                                    
+
                                     // New Laptop Status & Age
                                     'New Laptop - Status': newLaptop?.status || 'N/A',
                                     'New Laptop - Condition': newLaptop?.condition || 'N/A',
                                     'New Laptop - Age (Years)': newLaptop?.purchaseDate ? calculateDeviceAge(newLaptop.purchaseDate) : 'N/A',
                                     'New Laptop - Purchase Date': newLaptop?.purchaseDate ? format(new Date(newLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                    
+
                                     // New Laptop Network & Location
                                     'New Laptop - Location': newLaptop?.location || 'N/A',
                                     'New Laptop - IP Address': newLaptop?.ipAddress || 'N/A',
                                     'New Laptop - MAC Address': newLaptop?.macAddress || 'N/A',
                                     'New Laptop - Assigned To': newLaptop?.assignedTo || 'N/A',
-                                    
+
                                     // === DESKTOP ===
                                     // Desktop Identification
                                     'Desktop - Asset Tag': userDesktop?.assetTag || 'N/A',
@@ -2185,11 +1991,11 @@ export default function ReportsSecondary() {
                                     'Desktop - Serial Number': userDesktop?.serialNumber || 'N/A',
                                     'Desktop - Model': userDesktop?.model || 'N/A',
                                     'Desktop - Manufacturer': userDesktop?.manufacturer || 'N/A',
-                                    
+
                                     // Desktop Status
                                     'Desktop - Status': userDesktop?.status || 'N/A',
                                     'Desktop - Condition': userDesktop?.condition || 'N/A',
-                                    
+
                                     // Desktop Network & Location
                                     'Desktop - Location': userDesktop?.location || 'N/A',
                                     'Desktop - IP Address': userDesktop?.ipAddress || 'N/A',
@@ -2236,114 +2042,116 @@ export default function ReportsSecondary() {
                             const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
                             return hasOldLaptop && hasNewLaptop;
                           }).length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {Array.from(knoxIDUsers.entries())
-                              .filter(([knoxId, userAssets]) => {
-                                const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                                if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                                const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                                return hasOldLaptop && hasNewLaptop;
-                              })
-                              .map(([knoxId, userAssets]) => {
-                                const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
-                                const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
-                                const oldLaptopAge = calculateDeviceAge(oldLaptop?.purchaseDate);
-                                const newLaptopAge = calculateDeviceAge(newLaptop?.purchaseDate);
+                          <>
+                            <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                              {Array.from(knoxIDUsers.entries())
+                                .filter(([knoxId, userAssets]) => {
+                                  const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
+                                  const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
+                                  if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
+                                  const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
+                                  const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
+                                  return hasOldLaptop && hasNewLaptop;
+                                })
+                                .map(([knoxId, userAssets]) => {
+                                  const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
+                                  const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
+                                  const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
+                                  const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
+                                  const oldLaptopAge = calculateDeviceAge(oldLaptop?.purchaseDate);
+                                  const newLaptopAge = calculateDeviceAge(newLaptop?.purchaseDate);
 
-                                return (
-                                  <div 
-                                    key={knoxId} 
-                                    onClick={() => navigateWithFilters({ search: knoxId })}
-                                    className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
-                                  >
-                                    <div className="flex items-start justify-between mb-4">
-                                      <div className="flex-1">
-                                        <h4 className="font-semibold text-gray-900 text-lg">
-                                          Knox ID: {knoxId}
-                                        </h4>
-                                        <Badge className="mt-2 bg-orange-100 text-orange-800 border-orange-300">
-                                          {oldLaptop?.department || 'No Department'}
-                                        </Badge>
+                                  return (
+                                    <div
+                                      key={knoxId}
+                                      onClick={() => navigateWithFilters({ search: knoxId })}
+                                      className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
+                                    >
+                                      <div className="flex items-start justify-between mb-4">
+                                        <div className="flex-1">
+                                          <h4 className="font-semibold text-gray-900 text-lg">
+                                            Knox ID: {knoxId}
+                                          </h4>
+                                          <Badge className="mt-2 bg-orange-100 text-orange-800 border-orange-300">
+                                            {oldLaptop?.department || 'No Department'}
+                                          </Badge>
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <Badge className="bg-amber-100 text-amber-800 border-amber-300">
+                                            3 Devices
+                                          </Badge>
+                                        </div>
                                       </div>
-                                      <div className="flex gap-2">
-                                        <Badge className="bg-amber-100 text-amber-800 border-amber-300">
-                                          3 Devices
-                                        </Badge>
+
+                                      <div className="space-y-4">
+                                        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                                          <p className="text-xs font-semibold text-red-700 mb-3 flex items-center gap-2">
+                                            <Laptop className="h-4 w-4" />
+                                            OLD LAPTOP - {oldLaptopAge} years old
+                                          </p>
+                                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                              <p className="text-sm font-medium text-gray-900">{oldLaptop?.assetTag || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Model</p>
+                                              <p className="text-sm font-medium text-gray-900">{oldLaptop?.model || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                              <p className="text-sm font-medium text-gray-900">{oldLaptop?.serialNumber || 'N/A'}</p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                          <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-2">
+                                            <Laptop className="h-4 w-4" />
+                                            NEW LAPTOP - {newLaptopAge} years old
+                                          </p>
+                                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                              <p className="text-sm font-medium text-gray-900">{newLaptop?.assetTag || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Model</p>
+                                              <p className="text-sm font-medium text-gray-900">{newLaptop?.model || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                              <p className="text-sm font-medium text-gray-900">{newLaptop?.serialNumber || 'N/A'}</p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                          <p className="text-xs font-semibold text-green-700 mb-3 flex items-center gap-2">
+                                            <Monitor className="h-4 w-4" />
+                                            DESKTOP
+                                          </p>
+                                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                                              <p className="text-sm font-medium text-gray-900">{userDesktop?.assetTag || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Model</p>
+                                              <p className="text-sm font-medium text-gray-900">{userDesktop?.model || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                                              <p className="text-sm font-medium text-gray-900">{userDesktop?.serialNumber || 'N/A'}</p>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
-
-                                    <div className="space-y-4">
-                                      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                                        <p className="text-xs font-semibold text-red-700 mb-3 flex items-center gap-2">
-                                          <Laptop className="h-4 w-4" />
-                                          OLD LAPTOP - {oldLaptopAge} years old
-                                        </p>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                            <p className="text-sm font-medium text-gray-900">{oldLaptop?.assetTag || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Model</p>
-                                            <p className="text-sm font-medium text-gray-900">{oldLaptop?.model || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                            <p className="text-sm font-medium text-gray-900">{oldLaptop?.serialNumber || 'N/A'}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                                        <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-2">
-                                          <Laptop className="h-4 w-4" />
-                                          NEW LAPTOP - {newLaptopAge} years old
-                                        </p>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                            <p className="text-sm font-medium text-gray-900">{newLaptop?.assetTag || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Model</p>
-                                            <p className="text-sm font-medium text-gray-900">{newLaptop?.model || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                            <p className="text-sm font-medium text-gray-900">{newLaptop?.serialNumber || 'N/A'}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                        <p className="text-xs font-semibold text-green-700 mb-3 flex items-center gap-2">
-                                          <Monitor className="h-4 w-4" />
-                                          DESKTOP
-                                        </p>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.assetTag || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Model</p>
-                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.model || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.serialNumber || 'N/A'}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
+                                  );
+                                })}
+                            </div>
+                          </>
                         ) : (
                           <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
                             <Monitor className="h-16 w-16 mx-auto text-gray-300 mb-3" />
