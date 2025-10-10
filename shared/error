@@ -1436,7 +1436,7 @@ export default function ReportsSecondary() {
                           return {
                             'Category': 'Desktop + 5+ Year Old Laptop',
                             'Knox ID': knoxId,
-                            'Department': laptop?.department || 'N/A',
+                            'Department': laptop?.department || desktop?.department || 'N/A',
                             'Laptop Asset Tag': laptop?.assetTag || 'N/A',
                             'Laptop Name': laptop?.name || 'N/A',
                             'Laptop Model': laptop?.model || 'N/A',
