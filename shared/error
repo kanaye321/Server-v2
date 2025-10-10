@@ -1,2351 +1,1533 @@
-import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import {
-  Download,
-  FileSpreadsheet,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Database,
-  Users,
-  Package,
-  Activity,
-  Laptop,
-  Monitor,
-  Building2,
-  PieChart,
-  BarChart3,
-  Clock,
-  User,
-  CalendarIcon
-} from "lucide-react";
-import { format } from "date-fns";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-interface ReportData {
-  assets: any[];
-  users: any[];
-  activities: any[];
-  consumables: any[];
-  licenses: any[];
-}
-
-export default function ReportsSecondary() {
-  const { toast } = useToast();
-  const [, navigate] = useLocation();
-  const [reportData, setReportData] = useState<ReportData | null>(null);
-  const queryClient = useQueryClient(); // Initialize useQueryClient
-
-  // State for filters (assuming these are used by the queries, not fully shown)
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [conditionFilter, setConditionFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [pageSize, setPageSize] = useState(10);
-  const [page, setPage] = useState(1);
-
-  // Date range filter state
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
-
-  // Date range additional filters
-  const [dateRangeCategoryFilter, setDateRangeCategoryFilter] = useState("all");
-  const [dateRangeStatusFilter, setDateRangeStatusFilter] = useState("all");
-  const [dateRangeConditionFilter, setDateRangeConditionFilter] = useState("all");
-
-
-  // Refetch data when component mounts
-  useEffect(() => {
-    // Refetch data on mount
-    queryClient.invalidateQueries({ queryKey: ['/api/assets'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/consumables'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/licenses'] });
-  }, [queryClient]);
-
-
-  const { data: assets = [] } = useQuery({
-    queryKey: ["assets", statusFilter, categoryFilter, departmentFilter, conditionFilter, searchTerm, page, pageSize], // Include filters in queryKey
-    queryFn: async () => {
-      // Construct URL with filters
-      const url = new URL("/api/assets", window.location.origin);
-      if (statusFilter !== "all") url.searchParams.append("statusFilter", statusFilter);
-      if (categoryFilter !== "all") url.searchParams.append("categoryFilter", categoryFilter);
-      if (departmentFilter !== "all") url.searchParams.append("departmentFilter", departmentFilter);
-      if (conditionFilter !== "all") url.searchParams.append("conditionFilter", conditionFilter);
-      if (searchTerm) url.searchParams.append("search", searchTerm);
-      url.searchParams.append("page", page.toString());
-      url.searchParams.append("pageSize", pageSize.toString());
-
-      const response = await fetch(url.toString(), { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch assets");
-      return response.json();
-    },
-  });
-
-  const { data: users = [] } = useQuery({
-    queryKey: ["users"],
-    queryFn: async () => {
-      const response = await fetch("/api/users", { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch users");
-      return response.json();
-    },
-  });
-
-  const { data: activities = [] } = useQuery({
-    queryKey: ["activities"],
-    queryFn: async () => {
-      const response = await fetch("/api/activities", { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch activities");
-      return response.json();
-    },
-  });
-
-  const { data: consumables = [] } = useQuery({
-    queryKey: ["consumables"],
-    queryFn: async () => {
-      const response = await fetch("/api/consumables", { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch consumables");
-      return response.json();
-    },
-  });
-
-  const { data: licenses = [] } = useQuery({
-    queryKey: ["licenses"],
-    queryFn: async () => {
-      const response = await fetch("/api/licenses", { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch licenses");
-      return response.json();
-    },
-  });
-
-  useEffect(() => {
-    setReportData({ assets, users, activities, consumables, licenses });
-  }, [assets, users, activities, consumables, licenses]);
-
-  const calculateDeviceAge = (purchaseDate: string) => {
-    if (!purchaseDate) return 0;
-    const purchase = new Date(purchaseDate);
-    const now = new Date();
-    return Math.floor((now.getTime() - purchase.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-  };
-
-  const navigateWithFilters = (filters: {
-    categoryFilter?: string;
-    statusFilter?: string;
-    departmentFilter?: string;
-    conditionFilter?: string;
-    search?: string;
-  }) => {
-    const params = new URLSearchParams();
-    if (filters.categoryFilter && filters.categoryFilter !== 'all') {
-      params.append('categoryFilter', filters.categoryFilter);
-    }
-    if (filters.statusFilter && filters.statusFilter !== 'all') {
-      params.append('statusFilter', filters.statusFilter);
-    }
-    if (filters.departmentFilter && filters.departmentFilter !== 'all') {
-      params.append('departmentFilter', filters.departmentFilter);
-    }
-    if (filters.conditionFilter && filters.conditionFilter !== 'all') {
-      params.append('conditionFilter', filters.conditionFilter);
-    }
-    if (filters.search) {
-      params.append('search', filters.search);
-    }
-    const queryString = params.toString();
-    navigate(`/assets${queryString ? `?${queryString}` : ''}`);
-  };
-
-  const laptops = assets.filter(a => a.category?.toLowerCase() === 'laptop');
-  const desktops = assets.filter(a => a.category?.toLowerCase() === 'desktop');
-  const deployedAssets = assets.filter(a => a.status === 'Deployed');
-  const availableAssets = assets.filter(a => a.status === 'available' || a.status === 'On-Hand');
-  const goodCondition = assets.filter(a => a.condition === 'Good');
-  const badCondition = assets.filter(a => a.condition === 'Bad');
-
-  const laptopStats = {
-    total: laptops.length,
-    onHand: laptops.filter(laptop => laptop.status === 'available' || laptop.status === 'On-Hand').length,
-    deployed: laptops.filter(laptop => laptop.status === 'Deployed').length,
-    pendingDeployment: laptops.filter(laptop => laptop.status === 'pending').length,
-    goodCondition: laptops.filter(laptop => laptop.condition === 'Good').length,
-    badCondition: laptops.filter(laptop => laptop.condition === 'Bad').length,
-    reserved: laptops.filter(laptop => laptop.status === 'Reserved').length
-  };
-
-  const desktopStats = {
-    total: desktops.length,
-    onHand: desktops.filter(desktop => desktop.status === 'available' || desktop.status === 'On-Hand').length,
-    deployed: desktops.filter(desktop => desktop.status === 'Deployed').length,
-    pendingDeployment: desktops.filter(desktop => desktop.status === 'pending').length,
-    goodCondition: desktops.filter(desktop => desktop.condition === 'Good').length,
-    badCondition: desktops.filter(desktop => desktop.condition === 'Bad').length,
-    reserved: desktops.filter(desktop => desktop.status === 'Reserved').length
-  };
-
-  const departmentData = assets.reduce((acc: any, asset: any) => {
-    if (asset.department && asset.status === 'Deployed') {
-      if (!acc[asset.department]) {
-        acc[asset.department] = {
-          laptops: 0,
-          desktops: 0
-        };
-      }
-      if (asset.category?.toLowerCase() === 'laptop') {
-        acc[asset.department].laptops++;
-      } else if (asset.category?.toLowerCase() === 'desktop') {
-        acc[asset.department].desktops++;
-      }
-    }
-    return acc;
-  }, {});
-
-  const ageDistribution = {
-    new: laptops.filter(l => calculateDeviceAge(l.purchaseDate) <= 1).length,
-    good: laptops.filter(l => calculateDeviceAge(l.purchaseDate) > 1 && calculateDeviceAge(l.purchaseDate) <= 3).length,
-    aging: laptops.filter(l => calculateDeviceAge(l.purchaseDate) > 3 && calculateDeviceAge(l.purchaseDate) <= 5).length,
-    old: laptops.filter(l => calculateDeviceAge(l.purchaseDate) > 5).length,
-  };
-
-  // Filter assets by date range
-  const dateRangeAssets = assets.filter(asset => {
-    // If no date filters are set, return all assets with purchase dates
-    if (!dateFrom && !dateTo) {
-      if (!asset.purchaseDate) return false;
-    } else {
-      // Skip assets without purchase dates when filters are active
-      if (!asset.purchaseDate) return false;
-    }
-
-    // Apply date range filter
-    let passesDateFilter = true;
-    if (dateFrom || dateTo) {
-      const purchaseDate = new Date(asset.purchaseDate);
-      purchaseDate.setHours(0, 0, 0, 0);
-
-      if (dateFrom && dateTo) {
-        const from = new Date(dateFrom);
-        from.setHours(0, 0, 0, 0);
-        const to = new Date(dateTo);
-        to.setHours(23, 59, 59, 999);
-        passesDateFilter = purchaseDate >= from && purchaseDate <= to;
-      } else if (dateFrom) {
-        const from = new Date(dateFrom);
-        from.setHours(0, 0, 0, 0);
-        passesDateFilter = purchaseDate >= from;
-      } else if (dateTo) {
-        const to = new Date(dateTo);
-        to.setHours(23, 59, 59, 999);
-        passesDateFilter = purchaseDate <= to;
-      }
-    }
-
-    if (!passesDateFilter) return false;
-
-    // Apply category filter
-    if (dateRangeCategoryFilter !== "all" && asset.category?.toLowerCase() !== dateRangeCategoryFilter.toLowerCase()) {
-      return false;
-    }
-
-    // Apply status filter
-    if (dateRangeStatusFilter !== "all" && asset.status !== dateRangeStatusFilter) {
-      return false;
-    }
-
-    // Apply condition filter
-    if (dateRangeConditionFilter !== "all" && asset.condition !== dateRangeConditionFilter) {
-      return false;
-    }
-
-    return true;
-  });
-
-  // Date range statistics
-  const dateRangeStats = {
-    total: dateRangeAssets.length,
-    laptops: dateRangeAssets.filter(a => a.category?.toLowerCase() === 'laptop').length,
-    desktops: dateRangeAssets.filter(a => a.category?.toLowerCase() === 'desktop').length,
-    deployed: dateRangeAssets.filter(a => a.status === 'Deployed').length,
-    available: dateRangeAssets.filter(a => a.status === 'available' || a.status === 'On-Hand').length
-  };
-
-  // Log for debugging when date filters are active
-  if (dateFrom || dateTo) {
-    console.log('Date Range Filter Active:', {
-      from: dateFrom ? format(dateFrom, 'yyyy-MM-dd') : 'Not set',
-      to: dateTo ? format(dateTo, 'yyyy-MM-dd') : 'Not set',
-      assetsFound: dateRangeAssets.length,
-      stats: dateRangeStats
-    });
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 230 60% 55%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 35%;
+    --accent: 210 40% 92%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 88%;
+    --input: 214.3 31.8% 92%;
+    --ring: 230 60% 55%;
+    --radius: 0.75rem;
+    --chart-1: 230 60% 55%;
+    --chart-2: 285 85% 65%;
+    --chart-3: 340 75% 60%;
+    --chart-4: 45 90% 65%;
+    --chart-5: 170 60% 50%;
   }
 
-  // Get unique Knox IDs from deployed assets
-  const getKnoxIDUsers = () => {
-    const deployedAssets = assets.filter(asset => {
-      // Only include deployed assets with valid Knox IDs
-      const isDeployed = asset.status === 'Deployed';
-      const hasKnoxId = asset.knoxId && asset.knoxId.trim() !== '';
-      return isDeployed && hasKnoxId;
-    });
-
-    const knoxIDMap = new Map();
-    deployedAssets.forEach(asset => {
-      const knoxId = asset.knoxId.trim().toLowerCase(); // Normalize to lowercase for consistency
-      if (!knoxIDMap.has(knoxId)) {
-        knoxIDMap.set(knoxId, []);
-      }
-      knoxIDMap.get(knoxId).push(asset);
-    });
-
-    return knoxIDMap;
-  };
-
-  const knoxIDUsers = getKnoxIDUsers();
-
-  // Category 1: Knox IDs with single 5+ year old laptop (no desktop, only 1 laptop that is 5+ years old)
-  const usersWithOldSingleLaptop = Array.from(knoxIDUsers.entries())
-    .filter(([knoxId, userAssets]) => {
-      const userLaptops = userAssets.filter(asset =>
-        asset.category?.toLowerCase() === 'laptop'
-      );
-
-      const userDesktops = userAssets.filter(asset =>
-        asset.category?.toLowerCase() === 'desktop'
-      );
-
-      // Must have exactly 1 laptop and 0 desktops
-      if (userLaptops.length !== 1 || userDesktops.length !== 0) {
-        return false;
-      }
-
-      const singleLaptop = userLaptops[0];
-      const deviceAge = calculateDeviceAge(singleLaptop.purchaseDate);
-
-      // Laptop must be 5 years or older
-      return deviceAge >= 5;
-    })
-    .map(([knoxId, userAssets]) => ({ 
-      knoxId, 
-      assets: userAssets,
-      laptopAge: calculateDeviceAge(userAssets.find(a => a.category?.toLowerCase() === 'laptop')?.purchaseDate)
-    }));
-
-  // Category 2: Knox IDs with one desktop and a 5+ year old laptop
-  const usersWithDesktopAndOldLaptop = Array.from(knoxIDUsers.entries())
-    .filter(([knoxId, userAssets]) => {
-      const userLaptops = userAssets.filter(asset =>
-        asset.category?.toLowerCase() === 'laptop'
-      );
-
-      const userDesktops = userAssets.filter(asset =>
-        asset.category?.toLowerCase() === 'desktop'
-      );
-
-      // Must have exactly 1 laptop and 1 desktop
-      if (userLaptops.length !== 1 || userDesktops.length !== 1) {
-        return false;
-      }
-
-      // Check if the laptop is 5+ years old
-      const laptop = userLaptops[0];
-      const deviceAge = calculateDeviceAge(laptop.purchaseDate);
-
-      return deviceAge >= 5;
-    })
-    .map(([knoxId, userAssets]) => ({ knoxId, assets: userAssets }));
-
-  // Category 3: Knox IDs with two laptops but no desktop
-  const usersWithTwoLaptopsNoDesktop = Array.from(knoxIDUsers.entries())
-    .filter(([knoxId, userAssets]) => {
-      const userLaptops = userAssets.filter(asset =>
-        asset.category?.toLowerCase() === 'laptop'
-      );
-
-      const userDesktops = userAssets.filter(asset =>
-        asset.category?.toLowerCase() === 'desktop'
-      );
-
-      // Must have exactly 2 laptops and 0 desktops
-      return userLaptops.length === 2 && userDesktops.length === 0;
-    })
-    .map(([knoxId, userAssets]) => ({ knoxId, assets: userAssets }));
-
-  // Log Knox ID analysis for debugging
-  console.log('Knox ID User Analysis:', {
-    totalKnoxIDs: knoxIDUsers.size,
-    category1Count: usersWithOldSingleLaptop.length,
-    category2Count: usersWithDesktopAndOldLaptop.length,
-    category3Count: usersWithTwoLaptopsNoDesktop.length
-  });
-
-  const exportToExcel = (data: any[], filename: string, sheetName: string) => {
-    if (!data || data.length === 0) {
-      toast({
-        title: "Export Error",
-        description: "No data available to export.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      // Separate summary data from detail data
-      const summaryData = data.filter(row =>
-        row['Device Type']?.includes('SUMMARY') ||
-        row['category']?.includes('SUMMARY') ||
-        row['analysisType']?.includes('SUMMARY') ||
-        row['department']?.includes('SUMMARY') ||
-        row['Device Type'] === 'SUMMARY - Total All Devices' ||
-        row['Device Type'] === 'GRAND TOTAL'
-      );
-
-      const detailData = data.filter(row =>
-        !row['Device Type']?.includes('SUMMARY') &&
-        !row['category']?.includes('SUMMARY') &&
-        !row['analysisType']?.includes('SUMMARY') &&
-        !row['department']?.includes('SUMMARY') &&
-        row['Device Type'] !== '--- DETAILED RECORDS START BELOW ---' &&
-        row['category'] !== '--- DETAILED RECORDS START BELOW ---' &&
-        row['analysisType'] !== '--- DETAILED RECORDS START BELOW ---' &&
-        row['department'] !== '--- DETAILED RECORDS START BELOW ---'
-      );
-
-      // Create workbook content in HTML table format (Excel can import this)
-      let excelContent = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="utf-8">
-          <!--[if gte mso 9]>
-          <xml>
-            <x:ExcelWorkbook>
-              <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                  <x:Name>Summary</x:Name>
-                  <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-                </x:ExcelWorksheet>
-                <x:ExcelWorksheet>
-                  <x:Name>Details</x:Name>
-                  <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-                </x:ExcelWorksheet>
-              </x:ExcelWorksheets>
-            </x:ExcelWorkbook>
-          </xml>
-          <![endif]-->
-          <style>
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #4CAF50; color: white; font-weight: bold; }
-            caption { font-size: 1.5em; margin: 10px; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-      `;
-
-      // Summary Sheet
-      if (summaryData.length > 0) {
-        excelContent += '<table border="1"><caption>Summary</caption>';
-        const summaryKeys = Object.keys(summaryData[0]);
-        excelContent += '<thead><tr>';
-        summaryKeys.forEach(key => {
-          const header = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
-          excelContent += `<th>${header}</th>`;
-        });
-        excelContent += '</tr></thead><tbody>';
-
-        summaryData.forEach(row => {
-          excelContent += '<tr>';
-          summaryKeys.forEach(key => {
-            excelContent += `<td>${row[key] || ''}</td>`;
-          });
-          excelContent += '</tr>';
-        });
-        excelContent += '</tbody></table><br/><br/>';
-      }
-
-      // Details Sheet
-      if (detailData.length > 0) {
-        excelContent += '<table border="1"><caption>Details</caption>';
-        const detailKeys = Object.keys(detailData[0]);
-        excelContent += '<thead><tr>';
-        detailKeys.forEach(key => {
-          const header = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
-          excelContent += `<th>${header}</th>`;
-        });
-        excelContent += '</tr></thead><tbody>';
-
-        detailData.forEach(row => {
-          excelContent += '<tr>';
-          detailKeys.forEach(key => {
-            excelContent += `<td>${row[key] || ''}</td>`;
-          });
-          excelContent += '</tr>';
-        });
-        excelContent += '</tbody></table>';
-      }
-
-      excelContent += '</body></html>';
-
-      // Create and download the file
-      const blob = new Blob([excelContent], {
-        type: 'application/vnd.ms-excel'
-      });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename}.xls`;
-      a.style.display = 'none';
-
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast({
-        title: "Export Successful",
-        description: `Excel file "${filename}.xls" has been downloaded with ${data.length} records in separate sheets.`,
-      });
-
-    } catch (error) {
-      console.error('Excel export error:', error);
-      toast({
-        title: "Export Error",
-        description: `Failed to export Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const exportData = (format: 'csv' | 'excel' | 'json') => {
-    const data = {
-      summary: {
-        totalAssets: assets.length,
-        laptops: laptops.length,
-        desktops: desktops.length,
-        deployed: deployedAssets.length,
-        available: availableAssets.length,
-        goodCondition: goodCondition.length,
-        badCondition: badCondition.length,
-      },
-      laptopStats,
-      desktopStats,
-      departments: departmentData,
-      ageDistribution: ageDistribution,
-      timestamp: new Date().toISOString()
-    };
-
-    if (format === 'json') {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `analytics-report-${format(new Date(), 'yyyy-MM-dd')}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({
-        title: "Export Successful",
-        description: `Analytics report exported as ${format.toUpperCase()}`,
-      });
-    }
-  };
-
-  const MetricCard = ({ title, value, subtitle, icon: Icon, color = "blue" }: any) => (
-    <Card className="hover:shadow-lg transition-all duration-300 border-l-4" style={{ borderLeftColor: `var(--${color}-500)` }}>
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Icon className={`h-5 w-5 text-${color}-600`} />
-              <p className="text-sm font-medium text-gray-600">{title}</p>
-            </div>
-            <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
-            <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const ProgressBar = ({ label, value, total, color = 'blue' }: any) => {
-    const percentage = total > 0 ? (value / total) * 100 : 0;
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="font-medium text-gray-700">{label}</span>
-          <span className="text-gray-600">{value} / {total} ({Math.round(percentage)}%)</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-          <div
-            className={`h-3 rounded-full transition-all duration-500 bg-gradient-to-r`}
-            style={{
-              width: `${percentage}%`,
-              background: `linear-gradient(90deg, var(--${color}-500), var(--${color}-600))`
-            }}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-                <BarChart3 className="h-8 w-8 text-blue-600" />
-                Interactive Analytics Dashboard
-              </h1>
-              <p className="text-sm text-gray-600">
-                Generated on {format(new Date(), 'MMMM dd, yyyy - HH:mm a')}
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => exportData('json')}
-                className="hover:bg-blue-50 hover:border-blue-300"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export JSON
-              </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Generate Report
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Key Metrics Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div onClick={() => window.location.href = '/assets'} className="cursor-pointer">
-            <MetricCard
-              title="Total Assets"
-              value={assets.length}
-              subtitle={`${deployedAssets.length} deployed`}
-              icon={Database}
-              color="blue"
-            />
-          </div>
-          <div onClick={() => window.location.href = '/users'} className="cursor-pointer">
-            <MetricCard
-              title="Active Users"
-              value={users.length}
-              subtitle={`${users.filter((u: any) => u.status === 'active').length} active`}
-              icon={Users}
-              color="green"
-            />
-          </div>
-          <div onClick={() => window.location.href = '/licenses'} className="cursor-pointer">
-            <MetricCard
-              title="Licenses"
-              value={licenses.length}
-              subtitle={`${licenses.filter((l: any) => l.status === 'active').length} active`}
-              icon={FileSpreadsheet}
-              color="purple"
-            />
-          </div>
-          <div onClick={() => window.location.href = '/consumables'} className="cursor-pointer">
-            <MetricCard
-              title="Consumables"
-              value={consumables.length}
-              subtitle={`${consumables.filter((c: any) => c.status === 'available').length} available`}
-              icon={Package}
-              color="orange"
-            />
-          </div>
-        </div>
-
-        {/* Tabbed Content */}
-        <Card className="shadow-lg">
-          <Tabs defaultValue="overview" className="w-full">
-            <CardHeader className="border-b bg-gray-50">
-              <TabsList className="grid w-full grid-cols-6 h-auto bg-transparent gap-2">
-                <TabsTrigger
-                  value="overview"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex items-center gap-2 py-3"
-                >
-                  <PieChart className="h-4 w-4" />
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger
-                  value="laptops"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex items-center gap-2 py-3"
-                >
-                  <Laptop className="h-4 w-4" />
-                  Laptops
-                </TabsTrigger>
-                <TabsTrigger
-                  value="desktops"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex items-center gap-2 py-3"
-                >
-                  <Monitor className="h-4 w-4" />
-                  Desktops
-                </TabsTrigger>
-                <TabsTrigger
-                  value="departments"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex items-center gap-2 py-3"
-                >
-                  <Building2 className="h-4 w-4" />
-                  Departments
-                </TabsTrigger>
-                <TabsTrigger
-                  value="daterange"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex items-center gap-2 py-3"
-                >
-                  <CalendarIcon className="h-4 w-4" />
-                  Date Range
-                </TabsTrigger>
-                <TabsTrigger
-                  value="users"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex items-center gap-2 py-3"
-                >
-                  <Users className="h-4 w-4" />
-                  User Analysis
-                </TabsTrigger>
-              </TabsList>
-            </CardHeader>
-
-            <CardContent className="p-6">
-              {/* Overview Tab */}
-              <TabsContent value="overview" className="space-y-6 mt-0">
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const summaryData = [
-                        { 'Device Type': 'SUMMARY - Laptop', 'Total Devices': laptops.length, 'On Hand Devices': laptopStats.onHand, 'Deployed Devices': laptopStats.deployed, 'Pending Devices': laptopStats.pendingDeployment, 'Good Condition': laptopStats.goodCondition, 'Bad Condition': laptopStats.badCondition, 'Reserved Devices': laptopStats.reserved },
-                        { 'Device Type': 'SUMMARY - Desktop', 'Total Devices': desktops.length, 'On Hand Devices': desktopStats.onHand, 'Deployed Devices': desktopStats.deployed, 'Pending Devices': desktopStats.pendingDeployment, 'Good Condition': desktopStats.goodCondition, 'Bad Condition': desktopStats.badCondition, 'Reserved Devices': desktopStats.reserved },
-                        { 'Device Type': 'SUMMARY - Total All Devices', 'Total Devices': assets.length, 'On Hand Devices': laptopStats.onHand + desktopStats.onHand, 'Deployed Devices': laptopStats.deployed + desktopStats.deployed, 'Pending Devices': laptopStats.pendingDeployment + desktopStats.pendingDeployment, 'Good Condition': laptopStats.goodCondition + desktopStats.goodCondition, 'Bad Condition': laptopStats.badCondition + desktopStats.badCondition, 'Reserved Devices': laptopStats.reserved + desktopStats.reserved },
-                        { 'Device Type': '--- DETAILED RECORDS START BELOW ---', 'Total Devices': '', 'On Hand Devices': '', 'Deployed Devices': '', 'Pending Devices': '', 'Good Condition': '', 'Bad Condition': '', 'Reserved Devices': '' }
-                      ];
-
-                      const detailData = assets.map(asset => ({
-                        'Device Type': asset.category || 'N/A',
-                        'Total Devices': '',
-                        'On Hand Devices': '',
-                        'Deployed Devices': '',
-                        'Pending Devices': '',
-                        'Good Condition': '',
-                        'Bad Condition': '',
-                        'Reserved Devices': '',
-                        'Asset Tag': asset.assetTag || 'N/A',
-                        'Device Name': asset.name || 'N/A',
-                        'Serial Number': asset.serialNumber || 'N/A',
-                        'Knox ID': asset.knoxId || 'N/A',
-                        'Model': asset.model || 'N/A',
-                        'Manufacturer': asset.manufacturer || 'N/A',
-                        'Status': asset.status || 'N/A',
-                        'Condition': asset.condition || 'N/A',
-                        'Department': asset.department || 'N/A',
-                        'Assigned To': asset.assignedTo || 'N/A',
-                        'Purchase Date': asset.purchaseDate || 'N/A',
-                        'Location': asset.location || 'N/A',
-                        'IP Address': asset.ipAddress || 'N/A',
-                        'MAC Address': asset.macAddress || 'N/A',
-                        'OS Type': asset.osType || 'N/A'
-                      }));
-
-                      exportToExcel([...summaryData, ...detailData], `overview-${format(new Date(), 'yyyy-MM-dd')}`, 'Overview Summary');
-                    }}
-                    className="hover:bg-blue-50 hover:border-blue-300"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export to Excel
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Card className="border-2 border-blue-100">
-                    <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Database className="h-5 w-5 text-blue-600" />
-                        Device Inventory
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-4">
-                      <ProgressBar label="Laptops" value={laptops.length} total={assets.length} color="blue" />
-                      <ProgressBar label="Desktops" value={desktops.length} total={assets.length} color="purple" />
-                      <ProgressBar label="Deployed" value={deployedAssets.length} total={assets.length} color="green" />
-                      <ProgressBar label="Available" value={availableAssets.length} total={assets.length} color="yellow" />
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-2 border-green-100">
-                    <CardHeader className="bg-gradient-to-r from-green-50 to-green-100">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-green-600" />
-                        Device Health
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-4">
-                      <ProgressBar label="Good Condition" value={goodCondition.length} total={assets.length} color="green" />
-                      <ProgressBar label="Needs Attention" value={badCondition.length} total={assets.length} color="red" />
-                      <div className="pt-4 border-t">
-                        <div className="text-center">
-                          <p className="text-sm text-gray-600 mb-1">Overall Health Score</p>
-                          <p className="text-4xl font-bold text-green-600">
-                            {Math.round((goodCondition.length / assets.length) * 100)}%
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Age Distribution */}
-                <Card className="border-2 border-purple-100">
-                  <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-100">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-purple-600" />
-                      Device Age Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border-2 border-green-200 text-center hover:shadow-lg transition-all cursor-pointer">
-                        <p className="text-4xl font-bold text-green-700 mb-2">{ageDistribution.new}</p>
-                        <p className="text-sm font-medium text-green-800">New (≤1 year)</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border-2 border-blue-200 text-center hover:shadow-lg transition-all cursor-pointer">
-                        <p className="text-4xl font-bold text-blue-700 mb-2">{ageDistribution.good}</p>
-                        <p className="text-sm font-medium text-blue-800">Good (1-3 years)</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-xl border-2 border-yellow-200 text-center hover:shadow-lg transition-all cursor-pointer">
-                        <p className="text-4xl font-bold text-yellow-700 mb-2">{ageDistribution.aging}</p>
-                        <p className="text-sm font-medium text-yellow-800">Aging (3-5 years)</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'Laptop' })} className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-xl border-2 border-red-200 text-center hover:shadow-lg transition-all cursor-pointer">
-                        <p className="text-4xl font-bold text-red-700 mb-2">{ageDistribution.old}</p>
-                        <p className="text-sm font-medium text-red-800">Old (&gt;5 years)</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Laptops Tab */}
-              <TabsContent value="laptops" className="space-y-4 mt-0">
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const summaryData = [
-                        { 'Device Type': 'SUMMARY - Laptop Stats', 'Total Devices': laptopStats.total, 'On Hand Devices': laptopStats.onHand, 'Deployed Devices': laptopStats.deployed, 'Pending Devices': laptopStats.pendingDeployment, 'Good Condition': laptopStats.goodCondition, 'Bad Condition': laptopStats.badCondition, 'Reserved Devices': laptopStats.reserved },
-                        { 'Device Type': '--- DETAILED RECORDS START BELOW ---', 'Total Devices': '', 'On Hand Devices': '', 'Deployed Devices': '', 'Pending Devices': '', 'Good Condition': '', 'Bad Condition': '', 'Reserved Devices': '' }
-                      ];
-
-                      const laptopData = laptops.map(laptop => ({
-                        'Device Type': 'Laptop',
-                        'Total Devices': '',
-                        'On Hand Devices': '',
-                        'Deployed Devices': '',
-                        'Pending Devices': '',
-                        'Good Condition': '',
-                        'Bad Condition': '',
-                        'Reserved Devices': '',
-                        'Asset Tag': laptop.assetTag,
-                        'Name': laptop.name,
-                        'Model': laptop.model,
-                        'Serial Number': laptop.serialNumber,
-                        'Status': laptop.status,
-                        'Condition': laptop.condition,
-                        'Department': laptop.department || 'N/A',
-                        'Assigned To': laptop.assignedTo || 'N/A',
-                        'Purchase Date': laptop.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                        'Age': calculateDeviceAge(laptop.purchaseDate) + ' years',
-                      }));
-                      exportToExcel([...summaryData, ...laptopData], `laptops-${format(new Date(), 'yyyy-MM-dd')}`, 'Laptop Inventory');
-                    }}
-                    className="hover:bg-blue-50 hover:border-blue-300"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export to Excel
-                  </Button>
-                </div>
-                <Card className="border-2 border-blue-100">
-                  <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Laptop className="h-5 w-5 text-blue-600" />
-                      Laptop Inventory Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop' })} className="bg-white p-4 rounded-lg border-2 border-gray-200 hover:border-blue-300 transition-all cursor-pointer">
-                        <p className="text-sm text-gray-600 mb-1">Total Laptops</p>
-                        <p className="text-3xl font-bold text-gray-900">{laptopStats.total}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', statusFilter: 'available' })} className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border-2 border-green-200 cursor-pointer">
-                        <p className="text-sm text-green-700 mb-1">On-Hand</p>
-                        <p className="text-3xl font-bold text-green-800">{laptopStats.onHand}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', statusFilter: 'Deployed' })} className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border-2 border-blue-200 cursor-pointer">
-                        <p className="text-sm text-blue-700 mb-1">Deployed</p>
-                        <p className="text-3xl font-bold text-blue-800">{laptopStats.deployed}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', statusFilter: 'pending' })} className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-lg border-2 border-yellow-200 cursor-pointer">
-                        <p className="text-sm text-yellow-700 mb-1">Pending</p>
-                        <p className="text-3xl font-bold text-yellow-800">{laptopStats.pendingDeployment}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', conditionFilter: 'Good' })} className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 rounded-lg border-2 border-emerald-200 cursor-pointer">
-                        <p className="text-sm text-emerald-700 mb-1">Good Condition</p>
-                        <p className="text-3xl font-bold text-emerald-800">{laptopStats.goodCondition}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', conditionFilter: 'Bad' })} className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border-2 border-red-200 cursor-pointer">
-                        <p className="text-sm text-red-700 mb-1">Bad Condition</p>
-                        <p className="text-3xl font-bold text-red-800">{laptopStats.badCondition}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', statusFilter: 'Reserved' })} className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border-2 border-purple-200 cursor-pointer">
-                        <p className="text-sm text-purple-700 mb-1">Reserved</p>
-                        <p className="text-3xl font-bold text-purple-800">{laptopStats.reserved}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'laptop', statusFilter: 'Deployed' })} className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 rounded-lg border-2 border-indigo-200 cursor-pointer">
-                        <p className="text-sm text-indigo-700 mb-1">Utilization</p>
-                        <p className="text-3xl font-bold text-indigo-800">
-                          {Math.round((laptopStats.deployed / laptopStats.total) * 100)}%
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Desktops Tab */}
-              <TabsContent value="desktops" className="space-y-4 mt-0">
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const summaryData = [
-                        { 'Device Type': 'SUMMARY - Desktop Stats', 'Total Devices': desktopStats.total, 'On Hand Devices': desktopStats.onHand, 'Deployed Devices': desktopStats.deployed, 'Pending Devices': desktopStats.pendingDeployment, 'Good Condition': desktopStats.goodCondition, 'Bad Condition': desktopStats.badCondition, 'Reserved Devices': desktopStats.reserved },
-                        { 'Device Type': '--- DETAILED RECORDS START BELOW ---', 'Total Devices': '', 'On Hand Devices': '', 'Deployed Devices': '', 'Pending Devices': '', 'Good Condition': '', 'Bad Condition': '', 'Reserved Devices': '' }
-                      ];
-
-                      const desktopData = desktops.map(desktop => ({
-                        'Device Type': 'Desktop',
-                        'Total Devices': '',
-                        'On Hand Devices': '',
-                        'Deployed Devices': '',
-                        'Pending Devices': '',
-                        'Good Condition': '',
-                        'Bad Condition': '',
-                        'Reserved Devices': '',
-                        'Asset Tag': desktop.assetTag,
-                        'Name': desktop.name,
-                        'Model': desktop.model,
-                        'Serial Number': desktop.serialNumber,
-                        'Status': desktop.status,
-                        'Condition': desktop.condition,
-                        'Department': desktop.department || 'N/A',
-                        'Assigned To': desktop.assignedTo || 'N/A',
-                        'Purchase Date': desktop.purchaseDate ? format(new Date(desktop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                        'Age': calculateDeviceAge(desktop.purchaseDate) + ' years',
-                      }));
-                      exportToExcel([...summaryData, ...desktopData], `desktops-${format(new Date(), 'yyyy-MM-dd')}`, 'Desktop Inventory');
-                    }}
-                    className="hover:bg-purple-50 hover:border-purple-300"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export to Excel
-                  </Button>
-                </div>
-                <Card className="border-2 border-purple-100">
-                  <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-100">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Monitor className="h-5 w-5 text-purple-600" />
-                      Desktop Inventory Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop' })} className="bg-white p-4 rounded-lg border-2 border-gray-200 hover:border-purple-300 transition-all cursor-pointer">
-                        <p className="text-sm text-gray-600 mb-1">Total Desktops</p>
-                        <p className="text-3xl font-bold text-gray-900">{desktopStats.total}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', statusFilter: 'available' })} className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border-2 border-green-200 cursor-pointer">
-                        <p className="text-sm text-green-700 mb-1">On-Hand</p>
-                        <p className="text-3xl font-bold text-green-800">{desktopStats.onHand}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', statusFilter: 'Deployed' })} className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border-2 border-blue-200 cursor-pointer">
-                        <p className="text-sm text-blue-700 mb-1">Deployed</p>
-                        <p className="text-3xl font-bold text-blue-800">{desktopStats.deployed}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', statusFilter: 'pending' })} className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-lg border-2 border-yellow-200 cursor-pointer">
-                        <p className="text-sm text-yellow-700 mb-1">Pending</p>
-                        <p className="text-3xl font-bold text-yellow-800">{desktopStats.pendingDeployment}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', conditionFilter: 'Good' })} className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 rounded-lg border-2 border-emerald-200 cursor-pointer">
-                        <p className="text-sm text-emerald-700 mb-1">Good Condition</p>
-                        <p className="text-3xl font-bold text-emerald-800">{desktopStats.goodCondition}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', conditionFilter: 'Bad' })} className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border-2 border-red-200 cursor-pointer">
-                        <p className="text-sm text-red-700 mb-1">Bad Condition</p>
-                        <p className="text-3xl font-bold text-red-800">{desktopStats.badCondition}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', statusFilter: 'Reserved' })} className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border-2 border-purple-200 cursor-pointer">
-                        <p className="text-sm text-purple-700 mb-1">Reserved</p>
-                        <p className="text-3xl font-bold text-purple-800">{desktopStats.reserved}</p>
-                      </div>
-                      <div onClick={() => navigateWithFilters({ categoryFilter: 'desktop', statusFilter: 'Deployed' })} className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 rounded-lg border-2 border-indigo-200 cursor-pointer">
-                        <p className="text-sm text-indigo-700 mb-1">Utilization</p>
-                        <p className="text-3xl font-bold text-indigo-800">
-                          {Math.round((desktopStats.deployed / desktopStats.total) * 100)}%
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Departments Tab */}
-              <TabsContent value="departments" className="space-y-4 mt-0">
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const deptData = Object.entries(departmentData).map(([dept, data]: [any, any]) => ({
-                        department: dept,
-                        laptops: data.laptops,
-                        desktops: data.desktops,
-                        totalDevices: data.laptops + data.desktops,
-                        percentage: Math.round(((data.laptops + data.desktops) / deployedAssets.length) * 100) + '%',
-                      }));
-                      exportToExcel(deptData, `departments-${format(new Date(), 'yyyy-MM-dd')}`, 'Department Distribution');
-                    }}
-                    className="hover:bg-orange-50 hover:border-orange-300"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export to Excel
-                  </Button>
-                </div>
-                <Card className="border-2 border-orange-100">
-                  <CardHeader className="bg-gradient-to-r from-orange-50 to-orange-100">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Building2 className="h-5 w-5 text-orange-600" />
-                      Department Distribution
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="space-y-4">
-                      {Object.entries(departmentData)
-                        .sort(([, a]: [any, any], [, b]: [any, any]) => (b.laptops + b.desktops) - (a.laptops + a.desktops))
-                        .map(([dept, data]: [any, any], index: number) => {
-                          const total = data.laptops + data.desktops;
-                          const percentage = (total / deployedAssets.length) * 100;
-                          return (
-                            <div key={dept} onClick={() => navigateWithFilters({ departmentFilter: dept, statusFilter: 'Deployed' })} className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer">
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold">
-                                    {index + 1}
-                                  </div>
-                                  <div>
-                                    <h4 className="font-semibold text-gray-900">{dept}</h4>
-                                    <p className="text-xs text-gray-500">
-                                      {data.laptops} Laptops • {data.desktops} Desktops
-                                    </p>
-                                  </div>
-                                </div>
-                                <Badge className="bg-orange-100 text-orange-800 border-orange-300">
-                                  {total} devices
-                                </Badge>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                                <div
-                                  className="h-4 rounded-full bg-gradient-to-r from-orange-400 to-orange-600 flex items-center justify-end pr-2"
-                                  style={{ width: `${percentage}%` }}
-                                >
-                                  <span className="text-xs text-white font-medium">
-                                    {Math.round(percentage)}%
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Date Range Tab */}
-              <TabsContent value="daterange" className="space-y-6 mt-0">
-                <div className="flex flex-col gap-4 mb-4">
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "justify-start text-left font-normal",
-                            !dateFrom && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dateFrom ? format(dateFrom, "PPP") : "From Date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={dateFrom}
-                          onSelect={setDateFrom}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "justify-start text-left font-normal",
-                            !dateTo && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dateTo ? format(dateTo, "PPP") : "To Date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={dateTo}
-                          onSelect={setDateTo}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setDateFrom(undefined);
-                        setDateTo(undefined);
-                      }}
-                    >
-                      Clear Dates
-                    </Button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-sm font-medium text-gray-600">Additional Filters:</span>
-
-                    <Select value={dateRangeCategoryFilter} onValueChange={setDateRangeCategoryFilter}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue placeholder="Category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        <SelectItem value="laptop">Laptop</SelectItem>
-                        <SelectItem value="desktop">Desktop</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={dateRangeStatusFilter} onValueChange={setDateRangeStatusFilter}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="available">Available</SelectItem>
-                        <SelectItem value="On-Hand">On-Hand</SelectItem>
-                        <SelectItem value="Deployed">Deployed</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="Reserved">Reserved</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={dateRangeConditionFilter} onValueChange={setDateRangeConditionFilter}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue placeholder="Condition" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Conditions</SelectItem>
-                        <SelectItem value="Good">Good</SelectItem>
-                        <SelectItem value="Fair">Fair</SelectItem>
-                        <SelectItem value="Bad">Bad</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setDateRangeCategoryFilter("all");
-                        setDateRangeStatusFilter("all");
-                        setDateRangeConditionFilter("all");
-                      }}
-                    >
-                      Clear Filters
-                    </Button>
-                  </div>
-                </div>
-
-                  <div className="flex justify-end mb-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const dateRangeData = dateRangeAssets.map(asset => ({
-                          'Asset Tag': asset.assetTag || 'N/A',
-                          'Name': asset.name || 'N/A',
-                          'Category': asset.category || 'N/A',
-                          'Model': asset.model || 'N/A',
-                          'Serial Number': asset.serialNumber || 'N/A',
-                          'Status': asset.status || 'N/A',
-                          'Condition': asset.condition || 'N/A',
-                          'Department': asset.department || 'N/A',
-                          'Purchase Date': asset.purchaseDate ? format(new Date(asset.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Cost': asset.cost || 'N/A',
-                          'Knox ID': asset.knoxId || 'N/A',
-                          'Location': asset.location || 'N/A'
-                        }));
-
-                        const dateRangeText = dateFrom && dateTo 
-                          ? `${format(dateFrom, 'yyyy-MM-dd')}-to-${format(dateTo, 'yyyy-MM-dd')}`
-                          : dateFrom 
-                            ? `from-${format(dateFrom, 'yyyy-MM-dd')}`
-                            : dateTo
-                              ? `to-${format(dateTo, 'yyyy-MM-dd')}`
-                              : 'all-dates';
-
-                        exportToExcel(dateRangeData, `date-range-report-${dateRangeText}`, 'Date Range Report');
-                      }}
-                      className="hover:bg-orange-50 hover:border-orange-300"
-                    >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Export to Excel
-                    </Button>
-                  </div>
-
-                <Card className="border-2 border-orange-100">
-                  <CardHeader className="bg-gradient-to-r from-orange-50 to-orange-100">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CalendarIcon className="h-5 w-5 text-orange-600" />
-                      Purchase Date Range Report
-                      {(dateFrom || dateTo) && (
-                        <Badge className="ml-2 bg-orange-600">
-                          {dateFrom && dateTo 
-                            ? `${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`
-                            : dateFrom 
-                              ? `From ${format(dateFrom, 'MMM dd, yyyy')}`
-                              : `To ${format(dateTo, 'MMM dd, yyyy')}`
-                          }
-                        </Badge>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border-2 border-blue-200">
-                        <p className="text-sm text-blue-700 mb-1">Total Assets</p>
-                        <p className="text-3xl font-bold text-blue-800">{dateRangeStats.total}</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border-2 border-purple-200">
-                        <p className="text-sm text-purple-700 mb-1">Laptops</p>
-                        <p className="text-3xl font-bold text-purple-800">{dateRangeStats.laptops}</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border-2 border-green-200">
-                        <p className="text-sm text-green-700 mb-1">Desktops</p>
-                        <p className="text-3xl font-bold text-green-800">{dateRangeStats.desktops}</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-teal-50 to-teal-100 p-4 rounded-lg border-2 border-teal-200">
-                        <p className="text-sm text-teal-700 mb-1">Deployed</p>
-                        <p className="text-3xl font-bold text-teal-800">{dateRangeStats.deployed}</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-lg border-2 border-yellow-200">
-                        <p className="text-sm text-yellow-700 mb-1">Available</p>
-                        <p className="text-3xl font-bold text-yellow-800">{dateRangeStats.available}</p>
-                      </div>
-                    </div>
-
-                    {dateRangeAssets.length > 0 ? (
-                      <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                        {dateRangeAssets.map((asset) => (
-                          <div 
-                            key={asset.id} 
-                            onClick={() => navigateWithFilters({ search: asset.assetTag })}
-                            className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
-                          >
-                            <div className="flex items-start justify-between mb-4">
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-gray-900 text-lg">
-                                  {asset.name}
-                                </h4>
-                                <p className="text-sm text-gray-600 mt-1">Asset Tag: {asset.assetTag}</p>
-                                <div className="flex gap-2 mt-2">
-                                  <Badge className="bg-blue-100 text-blue-800 border-blue-300">
-                                    {asset.category}
-                                  </Badge>
-                                  <Badge className={asset.status === 'Deployed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                                    {asset.status}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500">Purchase Date</p>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {asset.purchaseDate ? format(new Date(asset.purchaseDate), 'MMM dd, yyyy') : 'N/A'}
-                                </p>
-                                {asset.cost && (
-                                  <p className="text-lg font-bold text-indigo-600 mt-1">
-                                    ${parseFloat(asset.cost).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-200">
-                              <div>
-                                <p className="text-xs text-gray-500 mb-1">Model</p>
-                                <p className="text-sm font-medium text-gray-900">{asset.model || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                <p className="text-sm font-medium text-gray-900">{asset.serialNumber || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-gray-500 mb-1">Department</p>
-                                <p className="text-sm font-medium text-gray-900">{asset.department || 'N/A'}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-gray-500 mb-1">Condition</p>
-                                <Badge className={asset.condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                  {asset.condition || 'N/A'}
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                        <CalendarIcon className="h-16 w-16 mx-auto text-gray-300 mb-3" />
-                        <p className="text-lg font-medium text-gray-600">No Assets Found</p>
-                        <p className="text-sm text-gray-500 mt-2">
-                          {dateFrom || dateTo 
-                            ? 'No assets purchased in the selected date range'
-                            : 'Please select a date range to view purchased assets'
-                          }
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* User Analysis Tab */}
-              <TabsContent value="users" className="space-y-6 mt-0">
-                {/* Master Export Button */}
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-2xl font-bold text-gray-900">User Device Analysis</h3>
-                    <p className="text-sm text-gray-600 mt-1">Analyze users based on their device assignments</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      // Build comprehensive export data with all device details
-                      const exportData = [];
-
-                      // Category 1: Single 5+ Year Old Laptop
-                      usersWithOldSingleLaptop.forEach(({ knoxId, assets: userAssets }) => {
-                        const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
-                        if (laptop) {
-                          exportData.push({
-                            'Category': 'Single 5+ Year Old Laptop',
-                            'Knox ID': knoxId || 'N/A',
-                            'Department': laptop?.department || 'N/A',
-                            'Asset Tag': laptop?.assetTag || 'N/A',
-                            'Device Name': laptop?.name || 'N/A',
-                            'Model': laptop?.model || 'N/A',
-                            'Serial Number': laptop?.serialNumber || 'N/A',
-                            'Manufacturer': laptop?.manufacturer || 'N/A',
-                            'Device Age': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) + ' years' : 'N/A',
-                            'Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'Status': laptop?.status || 'N/A',
-                            'Condition': laptop?.condition || 'N/A',
-                            'Location': laptop?.location || 'N/A',
-                            'IP Address': laptop?.ipAddress || 'N/A',
-                            'MAC Address': laptop?.macAddress || 'N/A',
-                            'OS Type': laptop?.osType || 'N/A',
-                            'Assigned To': laptop?.assignedTo || 'N/A',
-                            'Cost': laptop?.cost || 'N/A',
-                            'Warranty': laptop?.warrantyExpiration || 'N/A'
-                          });
-                        }
-                      });
-
-                      // Category 2: Desktop + 5+ Year Old Laptop
-                      usersWithDesktopAndOldLaptop.forEach(({ knoxId, assets: userAssets }) => {
-                        const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
-                        const desktop = userAssets.find(a => a.category?.toLowerCase() === 'desktop');
-
-                        exportData.push({
-                          'Category': 'Desktop + 5+ Year Old Laptop',
-                          'Knox ID': knoxId || 'N/A',
-                          'Department': laptop?.department || desktop?.department || 'N/A',
-                          'Laptop Asset Tag': laptop?.assetTag || 'N/A',
-                          'Laptop Name': laptop?.name || 'N/A',
-                          'Laptop Model': laptop?.model || 'N/A',
-                          'Laptop Serial Number': laptop?.serialNumber || 'N/A',
-                          'Laptop Manufacturer': laptop?.manufacturer || 'N/A',
-                          'Laptop Age': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) + ' years' : 'N/A',
-                          'Laptop Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Laptop Status': laptop?.status || 'N/A',
-                          'Laptop Condition': laptop?.condition || 'N/A',
-                          'Laptop Location': laptop?.location || 'N/A',
-                          'Laptop IP Address': laptop?.ipAddress || 'N/A',
-                          'Laptop MAC Address': laptop?.macAddress || 'N/A',
-                          'Laptop OS Type': laptop?.osType || 'N/A',
-                          'Laptop Assigned To': laptop?.assignedTo || 'N/A',
-                          'Laptop Cost': laptop?.cost || 'N/A',
-                          'Desktop Asset Tag': desktop?.assetTag || 'N/A',
-                          'Desktop Name': desktop?.name || 'N/A',
-                          'Desktop Model': desktop?.model || 'N/A',
-                          'Desktop Serial Number': desktop?.serialNumber || 'N/A',
-                          'Desktop Manufacturer': desktop?.manufacturer || 'N/A',
-                          'Desktop Status': desktop?.status || 'N/A',
-                          'Desktop Condition': desktop?.condition || 'N/A',
-                          'Desktop Location': desktop?.location || 'N/A',
-                          'Desktop IP Address': desktop?.ipAddress || 'N/A',
-                          'Desktop MAC Address': desktop?.macAddress || 'N/A',
-                          'Desktop Assigned To': desktop?.assignedTo || 'N/A',
-                          'Desktop Cost': desktop?.cost || 'N/A'
-                        });
-                      });
-
-                      // Category 3: Two Laptops, No Desktop
-                      usersWithTwoLaptopsNoDesktop.forEach(({ knoxId, assets: userAssets }) => {
-                        const userLaptops = userAssets.filter(a => a.category?.toLowerCase() === 'laptop');
-                        const laptop1 = userLaptops[0];
-                        const laptop2 = userLaptops[1];
-
-                        exportData.push({
-                          'Category': 'Two Laptops, No Desktop',
-                          'Knox ID': knoxId || 'N/A',
-                          'Department': laptop1?.department || laptop2?.department || 'N/A',
-                          'Laptop 1 Asset Tag': laptop1?.assetTag || 'N/A',
-                          'Laptop 1 Name': laptop1?.name || 'N/A',
-                          'Laptop 1 Model': laptop1?.model || 'N/A',
-                          'Laptop 1 Serial Number': laptop1?.serialNumber || 'N/A',
-                          'Laptop 1 Manufacturer': laptop1?.manufacturer || 'N/A',
-                          'Laptop 1 Status': laptop1?.status || 'N/A',
-                          'Laptop 1 Condition': laptop1?.condition || 'N/A',
-                          'Laptop 1 Location': laptop1?.location || 'N/A',
-                          'Laptop 1 IP Address': laptop1?.ipAddress || 'N/A',
-                          'Laptop 1 MAC Address': laptop1?.macAddress || 'N/A',
-                          'Laptop 1 OS Type': laptop1?.osType || 'N/A',
-                          'Laptop 1 Assigned To': laptop1?.assignedTo || 'N/A',
-                          'Laptop 1 Purchase Date': laptop1?.purchaseDate ? format(new Date(laptop1.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Laptop 1 Age': laptop1?.purchaseDate ? calculateDeviceAge(laptop1.purchaseDate) + ' years' : 'N/A',
-                          'Laptop 2 Asset Tag': laptop2?.assetTag || 'N/A',
-                          'Laptop 2 Name': laptop2?.name || 'N/A',
-                          'Laptop 2 Model': laptop2?.model || 'N/A',
-                          'Laptop 2 Serial Number': laptop2?.serialNumber || 'N/A',
-                          'Laptop 2 Manufacturer': laptop2?.manufacturer || 'N/A',
-                          'Laptop 2 Status': laptop2?.status || 'N/A',
-                          'Laptop 2 Condition': laptop2?.condition || 'N/A',
-                          'Laptop 2 Location': laptop2?.location || 'N/A',
-                          'Laptop 2 IP Address': laptop2?.ipAddress || 'N/A',
-                          'Laptop 2 MAC Address': laptop2?.macAddress || 'N/A',
-                          'Laptop 2 OS Type': laptop2?.osType || 'N/A',
-                          'Laptop 2 Assigned To': laptop2?.assignedTo || 'N/A',
-                          'Laptop 2 Purchase Date': laptop2?.purchaseDate ? format(new Date(laptop2.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                          'Laptop 2 Age': laptop2?.purchaseDate ? calculateDeviceAge(laptop2.purchaseDate) + ' years' : 'N/A'
-                        });
-                      });
-
-                      // Category 4: Two Laptops + Desktop
-                      Array.from(knoxIDUsers.entries())
-                        .filter(([knoxId, userAssets]) => {
-                          const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                          const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                          if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                          const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                          const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                          return hasOldLaptop && hasNewLaptop;
-                        })
-                        .forEach(([knoxId, userAssets]) => {
-                          const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                          const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
-                          const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                          const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
-
-                          exportData.push({
-                            'Category': 'Two Laptops + One Desktop',
-                            'Knox ID': knoxId || 'N/A',
-                            'Department': oldLaptop?.department || newLaptop?.department || userDesktop?.department || 'N/A',
-                            'Old Laptop Asset Tag': oldLaptop?.assetTag || 'N/A',
-                            'Old Laptop Name': oldLaptop?.name || 'N/A',
-                            'Old Laptop Model': oldLaptop?.model || 'N/A',
-                            'Old Laptop Serial Number': oldLaptop?.serialNumber || 'N/A',
-                            'Old Laptop Manufacturer': oldLaptop?.manufacturer || 'N/A',
-                            'Old Laptop Status': oldLaptop?.status || 'N/A',
-                            'Old Laptop Condition': oldLaptop?.condition || 'N/A',
-                            'Old Laptop Location': oldLaptop?.location || 'N/A',
-                            'Old Laptop IP Address': oldLaptop?.ipAddress || 'N/A',
-                            'Old Laptop MAC Address': oldLaptop?.macAddress || 'N/A',
-                            'Old Laptop Assigned To': oldLaptop?.assignedTo || 'N/A',
-                            'Old Laptop Purchase Date': oldLaptop?.purchaseDate ? format(new Date(oldLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'Old Laptop Age': oldLaptop?.purchaseDate ? calculateDeviceAge(oldLaptop.purchaseDate) + ' years' : 'N/A',
-                            'New Laptop Asset Tag': newLaptop?.assetTag || 'N/A',
-                            'New Laptop Name': newLaptop?.name || 'N/A',
-                            'New Laptop Model': newLaptop?.model || 'N/A',
-                            'New Laptop Serial Number': newLaptop?.serialNumber || 'N/A',
-                            'New Laptop Manufacturer': newLaptop?.manufacturer || 'N/A',
-                            'New Laptop Status': newLaptop?.status || 'N/A',
-                            'New Laptop Condition': newLaptop?.condition || 'N/A',
-                            'New Laptop Location': newLaptop?.location || 'N/A',
-                            'New Laptop IP Address': newLaptop?.ipAddress || 'N/A',
-                            'New Laptop MAC Address': newLaptop?.macAddress || 'N/A',
-                            'New Laptop Assigned To': newLaptop?.assignedTo || 'N/A',
-                            'New Laptop Purchase Date': newLaptop?.purchaseDate ? format(new Date(newLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                            'New Laptop Age': newLaptop?.purchaseDate ? calculateDeviceAge(newLaptop.purchaseDate) + ' years' : 'N/A',
-                            'Desktop Asset Tag': userDesktop?.assetTag || 'N/A',
-                            'Desktop Name': userDesktop?.name || 'N/A',
-                            'Desktop Model': userDesktop?.model || 'N/A',
-                            'Desktop Serial Number': userDesktop?.serialNumber || 'N/A',
-                            'Desktop Manufacturer': userDesktop?.manufacturer || 'N/A',
-                            'Desktop Status': userDesktop?.status || 'N/A',
-                            'Desktop Condition': userDesktop?.condition || 'N/A',
-                            'Desktop Location': userDesktop?.location || 'N/A',
-                            'Desktop IP Address': userDesktop?.ipAddress || 'N/A',
-                            'Desktop MAC Address': userDesktop?.macAddress || 'N/A',
-                            'Desktop Assigned To': userDesktop?.assignedTo || 'N/A'
-                          });
-                        });
-
-                      exportToExcel(exportData, `user-analysis-all-categories-${format(new Date(), 'yyyy-MM-dd')}`, 'User Analysis');
-                    }}
-                    className="hover:bg-indigo-50 hover:border-indigo-300"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Export All Categories
-                  </Button>
-                </div>
-
-                {/* Nested Tabs for Categories */}
-                <Tabs defaultValue="category1" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4 bg-gray-100">
-                    <TabsTrigger value="category1" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
-                      <div className="flex flex-col items-center gap-1">
-                        <Laptop className="h-4 w-4" />
-                        <span className="text-xs">Category 1</span>
-                        <Badge variant="secondary" className="text-xs">{usersWithOldSingleLaptop.length}</Badge>
-                      </div>
-                    </TabsTrigger>
-                    <TabsTrigger value="category2" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                      <div className="flex flex-col items-center gap-1">
-                        <Monitor className="h-4 w-4" />
-                        <span className="text-xs">Category 2</span>
-                        <Badge variant="secondary" className="text-xs">{usersWithDesktopAndOldLaptop.length}</Badge>
-                      </div>
-                    </TabsTrigger>
-                    <TabsTrigger value="category3" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
-                      <div className="flex flex-col items-center gap-1">
-                        <Laptop className="h-4 w-4" />
-                        <span className="text-xs">Category 3</span>
-                        <Badge variant="secondary" className="text-xs">{usersWithTwoLaptopsNoDesktop.length}</Badge>
-                      </div>
-                    </TabsTrigger>
-                    <TabsTrigger value="category4" className="data-[state=active]:bg-orange-600 data-[state=active]:text-white">
-                      <div className="flex flex-col items-center gap-1">
-                        <Monitor className="h-4 w-4" />
-                        <span className="text-xs">Category 4</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {Array.from(knoxIDUsers.entries()).filter(([knoxId, userAssets]) => {
-                            const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                            const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                            if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                            const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                            const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                            return hasOldLaptop && hasNewLaptop;
-                          }).length}
-                        </Badge>
-                      </div>
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="category1" className="mt-6">
-
-                <Card className="border-2 border-indigo-100">
-                  <CardHeader className="bg-gradient-to-r from-indigo-50 to-indigo-100">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Laptop className="h-5 w-5 text-indigo-600" />
-                        Category 1: Users with Only One 5+ Year Old Laptop
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                              const exportData = usersWithOldSingleLaptop.map(({ knoxId, assets: userAssets }) => {
-                                const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
-                                return {
-                                  // User Information
-                                  'Category': 'Single 5+ Year Old Laptop',
-                                  'Knox ID': knoxId || 'N/A',
-                                  'Department': laptop?.department || 'N/A',
-                                  
-                                  // Device Identification
-                                  'Asset Tag': laptop?.assetTag || 'N/A',
-                                  'Device Name': laptop?.name || 'N/A',
-                                  'Serial Number': laptop?.serialNumber || 'N/A',
-                                  'Model': laptop?.model || 'N/A',
-                                  'Manufacturer': laptop?.manufacturer || 'N/A',
-                                  
-                                  // Device Status & Age
-                                  'Status': laptop?.status || 'N/A',
-                                  'Condition': laptop?.condition || 'N/A',
-                                  'Device Age (Years)': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) : 'N/A',
-                                  'Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
-                                  // Network & Location
-                                  'Location': laptop?.location || 'N/A',
-                                  'IP Address': laptop?.ipAddress || 'N/A',
-                                  'MAC Address': laptop?.macAddress || 'N/A',
-                                  'OS Type': laptop?.osType || 'N/A',
-                                  
-                                  // Assignment & Financial
-                                  'Assigned To': laptop?.assignedTo || 'N/A',
-                                  'Cost': laptop?.cost || 'N/A',
-                                  'Warranty Expiration': laptop?.warrantyExpiration || 'N/A'
-                                };
-                              });
-                              exportToExcel(exportData, `category1-single-old-laptop-${format(new Date(), 'yyyy-MM-dd')}`, 'Category 1');
-                            }}
-                            className="hover:bg-indigo-50 hover:border-indigo-300"
-                          >
-                            <FileSpreadsheet className="h-4 w-4 mr-2" />
-                            Export Category 1
-                          </Button>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-xl border-2 border-indigo-200">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-indigo-700 mb-1">Total Users Identified</p>
-                              <p className="text-4xl font-bold text-indigo-900">{usersWithOldSingleLaptop.length}</p>
-                              <p className="text-xs text-indigo-600 mt-2">Users with only 1 laptop (5+ years old) and no desktop</p>
-                            </div>
-                            <Laptop className="h-16 w-16 text-indigo-400" />
-                          </div>
-                        </div>
-
-                        {usersWithOldSingleLaptop.length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {usersWithOldSingleLaptop.map(({ knoxId, assets: userAssets }) => {
-                              const userLaptop = userAssets.find(asset =>
-                                asset.category?.toLowerCase() === 'laptop'
-                              );
-                              const deviceAge = calculateDeviceAge(userLaptop?.purchaseDate);
-
-                              return (
-                                <div 
-                                  key={knoxId} 
-                                  onClick={() => navigateWithFilters({ search: knoxId })}
-                                  className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-lg">
-                                        Knox ID: {knoxId}
-                                      </h4>
-                                      <Badge className="mt-2 bg-indigo-100 text-indigo-800 border-indigo-300">
-                                        {userLaptop?.department || 'No Department'}
-                                      </Badge>
-                                    </div>
-                                    <Badge className="bg-red-100 text-red-800 border-red-300">
-                                      {deviceAge} years old
-                                    </Badge>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.assetTag || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Device Name</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.name || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Model</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.model || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                      <p className="text-sm font-medium text-gray-900">{userLaptop?.serialNumber || 'N/A'}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Purchase Date</p>
-                                      <p className="text-sm font-medium text-gray-900">
-                                        {userLaptop?.purchaseDate ? format(new Date(userLaptop.purchaseDate), 'MMM dd, yyyy') : 'N/A'}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-gray-500 mb-1">Condition</p>
-                                      <Badge className={userLaptop?.condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                                        {userLaptop?.condition || 'N/A'}
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                            <Laptop className="h-16 w-16 mx-auto text-gray-300 mb-3" />
-                            <p className="text-lg font-medium text-gray-600">No Users Found</p>
-                            <p className="text-sm text-gray-500 mt-2">
-                              No users currently have a single 5+ year old laptop without a desktop
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="category2" className="mt-6">
-                <Card className="border-2 border-purple-100">
-                      <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-100">
-                        <CardTitle className="text-lg flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Monitor className="h-5 w-5 text-purple-600" />
-                            Category 2: Users with Desktop + 5+ Year Old Laptop
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const exportData = usersWithDesktopAndOldLaptop.map(({ knoxId, assets: userAssets }) => {
-                                const laptop = userAssets.find(a => a.category?.toLowerCase() === 'laptop');
-                                const desktop = userAssets.find(a => a.category?.toLowerCase() === 'desktop');
-                                return {
-                                  // User Information
-                                  'Category': 'Desktop + 5+ Year Old Laptop',
-                                  'Knox ID': knoxId || 'N/A',
-                                  'Department': laptop?.department || desktop?.department || 'N/A',
-                                  
-                                  // === LAPTOP DETAILS ===
-                                  // Laptop Identification
-                                  'Laptop - Asset Tag': laptop?.assetTag || 'N/A',
-                                  'Laptop - Device Name': laptop?.name || 'N/A',
-                                  'Laptop - Serial Number': laptop?.serialNumber || 'N/A',
-                                  'Laptop - Model': laptop?.model || 'N/A',
-                                  'Laptop - Manufacturer': laptop?.manufacturer || 'N/A',
-                                  
-                                  // Laptop Status & Age
-                                  'Laptop - Status': laptop?.status || 'N/A',
-                                  'Laptop - Condition': laptop?.condition || 'N/A',
-                                  'Laptop - Age (Years)': laptop?.purchaseDate ? calculateDeviceAge(laptop.purchaseDate) : 'N/A',
-                                  'Laptop - Purchase Date': laptop?.purchaseDate ? format(new Date(laptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
-                                  // Laptop Network & Location
-                                  'Laptop - Location': laptop?.location || 'N/A',
-                                  'Laptop - IP Address': laptop?.ipAddress || 'N/A',
-                                  'Laptop - MAC Address': laptop?.macAddress || 'N/A',
-                                  'Laptop - OS Type': laptop?.osType || 'N/A',
-                                  
-                                  // Laptop Assignment & Financial
-                                  'Laptop - Assigned To': laptop?.assignedTo || 'N/A',
-                                  'Laptop - Cost': laptop?.cost || 'N/A',
-                                  
-                                  // === DESKTOP DETAILS ===
-                                  // Desktop Identification
-                                  'Desktop - Asset Tag': desktop?.assetTag || 'N/A',
-                                  'Desktop - Device Name': desktop?.name || 'N/A',
-                                  'Desktop - Serial Number': desktop?.serialNumber || 'N/A',
-                                  'Desktop - Model': desktop?.model || 'N/A',
-                                  'Desktop - Manufacturer': desktop?.manufacturer || 'N/A',
-                                  
-                                  // Desktop Status
-                                  'Desktop - Status': desktop?.status || 'N/A',
-                                  'Desktop - Condition': desktop?.condition || 'N/A',
-                                  
-                                  // Desktop Network & Location
-                                  'Desktop - Location': desktop?.location || 'N/A',
-                                  'Desktop - IP Address': desktop?.ipAddress || 'N/A',
-                                  'Desktop - MAC Address': desktop?.macAddress || 'N/A',
-                                  
-                                  // Desktop Assignment & Financial
-                                  'Desktop - Assigned To': desktop?.assignedTo || 'N/A',
-                                  'Desktop - Cost': desktop?.cost || 'N/A'
-                                };
-                              });
-                              exportToExcel(exportData, `category2-desktop-old-laptop-${format(new Date(), 'yyyy-MM-dd')}`, 'Category 2');
-                            }}
-                            className="hover:bg-purple-50 hover:border-purple-300"
-                          >
-                            <FileSpreadsheet className="h-4 w-4 mr-2" />
-                            Export Category 2
-                          </Button>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        <div className="mb-6 bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-xl border-2 border-purple-200">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-purple-700 mb-1">Total Users Identified</p>
-                              <p className="text-4xl font-bold text-purple-900">{usersWithDesktopAndOldLaptop.length}</p>
-                              <p className="text-xs text-purple-600 mt-2">Users with 1 desktop and 1 laptop (5+ years old)</p>
-                            </div>
-                            <Monitor className="h-16 w-16 text-purple-400" />
-                          </div>
-                        </div>
-
-                        {usersWithDesktopAndOldLaptop.length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {usersWithDesktopAndOldLaptop.map(({ knoxId, assets: userAssets }) => {
-                              const userLaptop = userAssets.find(asset =>
-                                asset.category?.toLowerCase() === 'laptop'
-                              );
-                              const userDesktop = userAssets.find(asset =>
-                                asset.category?.toLowerCase() === 'desktop'
-                              );
-                              const laptopAge = calculateDeviceAge(userLaptop?.purchaseDate);
-
-                              return (
-                                <div 
-                                  key={knoxId} 
-                                  onClick={() => navigateWithFilters({ search: knoxId })}
-                                  className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-lg">
-                                        Knox ID: {knoxId}
-                                      </h4>
-                                      <Badge className="mt-2 bg-purple-100 text-purple-800 border-purple-300">
-                                        {userLaptop?.department || 'No Department'}
-                                      </Badge>
-                                    </div>
-                                    <Badge className="bg-orange-100 text-orange-800 border-orange-300">
-                                      Laptop: {laptopAge} years old
-                                    </Badge>
-                                  </div>
-
-                                  <div className="space-y-4">
-                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                                      <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-2">
-                                        <Laptop className="h-4 w-4" />
-                                        LAPTOP DETAILS
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{userLaptop?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{userLaptop?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{userLaptop?.serialNumber || 'N/A'}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                      <p className="text-xs font-semibold text-green-700 mb-3 flex items-center gap-2">
-                                        <Monitor className="h-4 w-4" />
-                                        DESKTOP DETAILS
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{userDesktop?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{userDesktop?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{userDesktop?.serialNumber || 'N/A'}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                            <Monitor className="h-16 w-16 mx-auto text-gray-300 mb-3" />
-                            <p className="text-lg font-medium text-gray-600">No Users Found</p>
-                            <p className="text-sm text-gray-500 mt-2">
-                              No users currently have a desktop with a 5+ year old laptop
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="category3" className="mt-6">
-                <Card className="border-2 border-green-100">
-                      <CardHeader className="bg-gradient-to-r from-green-50 to-green-100">
-                        <CardTitle className="text-lg flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Laptop className="h-5 w-5 text-green-600" />
-                            Category 3: Users with Two Laptops, No Desktop
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const exportData = usersWithTwoLaptopsNoDesktop.map(({ knoxId, assets: userAssets }) => {
-                                const userLaptops = userAssets.filter(a => a.category?.toLowerCase() === 'laptop');
-                                const laptop1 = userLaptops[0];
-                                const laptop2 = userLaptops[1];
-                                return {
-                                  // User Information
-                                  'Category': 'Two Laptops, No Desktop',
-                                  'Knox ID': knoxId || 'N/A',
-                                  'Department': laptop1?.department || laptop2?.department || 'N/A',
-                                  
-                                  // === LAPTOP 1 DETAILS ===
-                                  // Laptop 1 Identification
-                                  'Laptop 1 - Asset Tag': laptop1?.assetTag || 'N/A',
-                                  'Laptop 1 - Device Name': laptop1?.name || 'N/A',
-                                  'Laptop 1 - Serial Number': laptop1?.serialNumber || 'N/A',
-                                  'Laptop 1 - Model': laptop1?.model || 'N/A',
-                                  'Laptop 1 - Manufacturer': laptop1?.manufacturer || 'N/A',
-                                  
-                                  // Laptop 1 Status & Age
-                                  'Laptop 1 - Status': laptop1?.status || 'N/A',
-                                  'Laptop 1 - Condition': laptop1?.condition || 'N/A',
-                                  'Laptop 1 - Age (Years)': laptop1?.purchaseDate ? calculateDeviceAge(laptop1.purchaseDate) : 'N/A',
-                                  'Laptop 1 - Purchase Date': laptop1?.purchaseDate ? format(new Date(laptop1.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
-                                  // Laptop 1 Network & Location
-                                  'Laptop 1 - Location': laptop1?.location || 'N/A',
-                                  'Laptop 1 - IP Address': laptop1?.ipAddress || 'N/A',
-                                  'Laptop 1 - MAC Address': laptop1?.macAddress || 'N/A',
-                                  'Laptop 1 - OS Type': laptop1?.osType || 'N/A',
-                                  'Laptop 1 - Assigned To': laptop1?.assignedTo || 'N/A',
-                                  
-                                  // === LAPTOP 2 DETAILS ===
-                                  // Laptop 2 Identification
-                                  'Laptop 2 - Asset Tag': laptop2?.assetTag || 'N/A',
-                                  'Laptop 2 - Device Name': laptop2?.name || 'N/A',
-                                  'Laptop 2 - Serial Number': laptop2?.serialNumber || 'N/A',
-                                  'Laptop 2 - Model': laptop2?.model || 'N/A',
-                                  'Laptop 2 - Manufacturer': laptop2?.manufacturer || 'N/A',
-                                  
-                                  // Laptop 2 Status & Age
-                                  'Laptop 2 - Status': laptop2?.status || 'N/A',
-                                  'Laptop 2 - Condition': laptop2?.condition || 'N/A',
-                                  'Laptop 2 - Age (Years)': laptop2?.purchaseDate ? calculateDeviceAge(laptop2.purchaseDate) : 'N/A',
-                                  'Laptop 2 - Purchase Date': laptop2?.purchaseDate ? format(new Date(laptop2.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                  
-                                  // Laptop 2 Network & Location
-                                  'Laptop 2 - Location': laptop2?.location || 'N/A',
-                                  'Laptop 2 - IP Address': laptop2?.ipAddress || 'N/A',
-                                  'Laptop 2 - MAC Address': laptop2?.macAddress || 'N/A',
-                                  'Laptop 2 - OS Type': laptop2?.osType || 'N/A',
-                                  'Laptop 2 - Assigned To': laptop2?.assignedTo || 'N/A'
-                                };
-                              });
-                              exportToExcel(exportData, `category3-two-laptops-${format(new Date(), 'yyyy-MM-dd')}`, 'Category 3');
-                            }}
-                            className="hover:bg-green-50 hover:border-green-300"
-                          >
-                            <FileSpreadsheet className="h-4 w-4 mr-2" />
-                            Export Category 3
-                          </Button>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        <div className="mb-6 bg-gradient-to-r from-green-50 to-teal-50 p-6 rounded-xl border-2 border-green-200">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-green-700 mb-1">Total Users Identified</p>
-                              <p className="text-4xl font-bold text-green-900">{usersWithTwoLaptopsNoDesktop.length}</p>
-                              <p className="text-xs text-green-600 mt-2">Users with exactly 2 laptops and no desktop</p>
-                            </div>
-                            <Laptop className="h-16 w-16 text-green-400" />
-                          </div>
-                        </div>
-
-                        {usersWithTwoLaptopsNoDesktop.length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {usersWithTwoLaptopsNoDesktop.map(({ knoxId, assets: userAssets }) => {
-                              const userLaptops = userAssets.filter(asset =>
-                                asset.category?.toLowerCase() === 'laptop'
-                              );
-                              const laptop1 = userLaptops[0];
-                              const laptop2 = userLaptops[1];
-                              const laptop1Age = calculateDeviceAge(laptop1?.purchaseDate);
-                              const laptop2Age = calculateDeviceAge(laptop2?.purchaseDate);
-
-                              return (
-                                <div 
-                                  key={knoxId} 
-                                  onClick={() => navigateWithFilters({ search: knoxId })}
-                                  className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between mb-4">
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-lg">
-                                        Knox ID: {knoxId}
-                                      </h4>
-                                      <Badge className="mt-2 bg-green-100 text-green-800 border-green-300">
-                                        {laptop1?.department || 'No Department'}
-                                      </Badge>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Badge className="bg-blue-100 text-blue-800 border-blue-300">
-                                        2 Laptops
-                                      </Badge>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-4">
-                                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                                      <p className="text-xs font-semibold text-indigo-700 mb-3 flex items-center gap-2">
-                                        <Laptop className="h-4 w-4" />
-                                        LAPTOP 1 - {laptop1Age} years old
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop1?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop1?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop1?.serialNumber || 'N/A'}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <div className="bg-cyan-50 p-4 rounded-lg border border-cyan-200">
-                                      <p className="text-xs font-semibold text-cyan-700 mb-3 flex items-center gap-2">
-                                        <Laptop className="h-4 w-4" />
-                                        LAPTOP 2 - {laptop2Age} years old
-                                      </p>
-                                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop2?.assetTag || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Model</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop2?.model || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                          <p className="text-sm font-medium text-gray-900">{laptop2?.serialNumber || 'N/A'}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                            <Laptop className="h-16 w-16 mx-auto text-gray-300 mb-3" />
-                            <p className="text-lg font-medium text-gray-600">No Users Found</p>
-                            <p className="text-sm text-gray-500 mt-2">
-                              No users currently have exactly two laptops without a desktop
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="category4" className="mt-6">
-                <Card className="border-2 border-orange-100">
-                      <CardHeader className="bg-gradient-to-r from-orange-50 to-orange-100">
-                        <CardTitle className="text-lg flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Monitor className="h-5 w-5 text-orange-600" />
-                            Category 4: Users with Two Laptops + Desktop
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const exportData = Array.from(knoxIDUsers.entries())
-                                .filter(([knoxId, userAssets]) => {
-                                  const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                  const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                                  if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                                  const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                  const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                                  return hasOldLaptop && hasNewLaptop;
-                                })
-                                .map(([knoxId, userAssets]) => {
-                                  const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                  const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
-                                  const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                  const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
-
-                                  return {
-                                    // User Information
-                                    'Category': 'Two Laptops + One Desktop',
-                                    'Knox ID': knoxId || 'N/A',
-                                    'Department': oldLaptop?.department || newLaptop?.department || userDesktop?.department || 'N/A',
-                                    
-                                    // === OLD LAPTOP (5+ Years) ===
-                                    // Old Laptop Identification
-                                    'Old Laptop - Asset Tag': oldLaptop?.assetTag || 'N/A',
-                                    'Old Laptop - Device Name': oldLaptop?.name || 'N/A',
-                                    'Old Laptop - Serial Number': oldLaptop?.serialNumber || 'N/A',
-                                    'Old Laptop - Model': oldLaptop?.model || 'N/A',
-                                    'Old Laptop - Manufacturer': oldLaptop?.manufacturer || 'N/A',
-                                    
-                                    // Old Laptop Status & Age
-                                    'Old Laptop - Status': oldLaptop?.status || 'N/A',
-                                    'Old Laptop - Condition': oldLaptop?.condition || 'N/A',
-                                    'Old Laptop - Age (Years)': oldLaptop?.purchaseDate ? calculateDeviceAge(oldLaptop.purchaseDate) : 'N/A',
-                                    'Old Laptop - Purchase Date': oldLaptop?.purchaseDate ? format(new Date(oldLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                    
-                                    // Old Laptop Network & Location
-                                    'Old Laptop - Location': oldLaptop?.location || 'N/A',
-                                    'Old Laptop - IP Address': oldLaptop?.ipAddress || 'N/A',
-                                    'Old Laptop - MAC Address': oldLaptop?.macAddress || 'N/A',
-                                    'Old Laptop - Assigned To': oldLaptop?.assignedTo || 'N/A',
-                                    
-                                    // === NEW LAPTOP (<5 Years) ===
-                                    // New Laptop Identification
-                                    'New Laptop - Asset Tag': newLaptop?.assetTag || 'N/A',
-                                    'New Laptop - Device Name': newLaptop?.name || 'N/A',
-                                    'New Laptop - Serial Number': newLaptop?.serialNumber || 'N/A',
-                                    'New Laptop - Model': newLaptop?.model || 'N/A',
-                                    'New Laptop - Manufacturer': newLaptop?.manufacturer || 'N/A',
-                                    
-                                    // New Laptop Status & Age
-                                    'New Laptop - Status': newLaptop?.status || 'N/A',
-                                    'New Laptop - Condition': newLaptop?.condition || 'N/A',
-                                    'New Laptop - Age (Years)': newLaptop?.purchaseDate ? calculateDeviceAge(newLaptop.purchaseDate) : 'N/A',
-                                    'New Laptop - Purchase Date': newLaptop?.purchaseDate ? format(new Date(newLaptop.purchaseDate), 'yyyy-MM-dd') : 'N/A',
-                                    
-                                    // New Laptop Network & Location
-                                    'New Laptop - Location': newLaptop?.location || 'N/A',
-                                    'New Laptop - IP Address': newLaptop?.ipAddress || 'N/A',
-                                    'New Laptop - MAC Address': newLaptop?.macAddress || 'N/A',
-                                    'New Laptop - Assigned To': newLaptop?.assignedTo || 'N/A',
-                                    
-                                    // === DESKTOP ===
-                                    // Desktop Identification
-                                    'Desktop - Asset Tag': userDesktop?.assetTag || 'N/A',
-                                    'Desktop - Device Name': userDesktop?.name || 'N/A',
-                                    'Desktop - Serial Number': userDesktop?.serialNumber || 'N/A',
-                                    'Desktop - Model': userDesktop?.model || 'N/A',
-                                    'Desktop - Manufacturer': userDesktop?.manufacturer || 'N/A',
-                                    
-                                    // Desktop Status
-                                    'Desktop - Status': userDesktop?.status || 'N/A',
-                                    'Desktop - Condition': userDesktop?.condition || 'N/A',
-                                    
-                                    // Desktop Network & Location
-                                    'Desktop - Location': userDesktop?.location || 'N/A',
-                                    'Desktop - IP Address': userDesktop?.ipAddress || 'N/A',
-                                    'Desktop - MAC Address': userDesktop?.macAddress || 'N/A',
-                                    'Desktop - Assigned To': userDesktop?.assignedTo || 'N/A'
-                                  };
-                                });
-                              exportToExcel(exportData, `category4-two-laptops-desktop-${format(new Date(), 'yyyy-MM-dd')}`, 'Category 4');
-                            }}
-                            className="hover:bg-orange-50 hover:border-orange-300"
-                          >
-                            <FileSpreadsheet className="h-4 w-4 mr-2" />
-                            Export Category 4
-                          </Button>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        <div className="mb-6 bg-gradient-to-r from-orange-50 to-amber-50 p-6 rounded-xl border-2 border-orange-200">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-orange-700 mb-1">Total Users Identified</p>
-                              <p className="text-4xl font-bold text-orange-900">
-                                {Array.from(knoxIDUsers.entries()).filter(([knoxId, userAssets]) => {
-                                  const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                  const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                                  if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                                  const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                  const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                                  return hasOldLaptop && hasNewLaptop;
-                                }).length}
-                              </p>
-                              <p className="text-xs text-orange-600 mt-2">Users with 2 laptops (one old, one new) + 1 desktop</p>
-                            </div>
-                            <Monitor className="h-16 w-16 text-orange-400" />
-                          </div>
-                        </div>
-
-                        {Array.from(knoxIDUsers.entries())
-                          .filter(([knoxId, userAssets]) => {
-                            const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                            const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                            if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                            const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                            const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                            return hasOldLaptop && hasNewLaptop;
-                          }).length > 0 ? (
-                          <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-                            {Array.from(knoxIDUsers.entries())
-                              .filter(([knoxId, userAssets]) => {
-                                const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                const userDesktop = userAssets.filter(asset => asset.category?.toLowerCase() === 'desktop');
-                                if (userLaptops.length !== 2 || userDesktop.length !== 1) return false;
-                                const hasOldLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                const hasNewLaptop = userLaptops.some(l => calculateDeviceAge(l.purchaseDate) < 5);
-                                return hasOldLaptop && hasNewLaptop;
-                              })
-                              .map(([knoxId, userAssets]) => {
-                                const userLaptops = userAssets.filter(asset => asset.category?.toLowerCase() === 'laptop');
-                                const userDesktop = userAssets.find(asset => asset.category?.toLowerCase() === 'desktop');
-                                const oldLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) >= 5);
-                                const newLaptop = userLaptops.find(l => calculateDeviceAge(l.purchaseDate) < 5);
-                                const oldLaptopAge = calculateDeviceAge(oldLaptop?.purchaseDate);
-                                const newLaptopAge = calculateDeviceAge(newLaptop?.purchaseDate);
-
-                                return (
-                                  <div 
-                                    key={knoxId} 
-                                    onClick={() => navigateWithFilters({ search: knoxId })}
-                                    className="bg-white p-5 rounded-xl border-2 border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
-                                  >
-                                    <div className="flex items-start justify-between mb-4">
-                                      <div className="flex-1">
-                                        <h4 className="font-semibold text-gray-900 text-lg">
-                                          Knox ID: {knoxId}
-                                        </h4>
-                                        <Badge className="mt-2 bg-orange-100 text-orange-800 border-orange-300">
-                                          {oldLaptop?.department || 'No Department'}
-                                        </Badge>
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <Badge className="bg-amber-100 text-amber-800 border-amber-300">
-                                          3 Devices
-                                        </Badge>
-                                      </div>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                                        <p className="text-xs font-semibold text-red-700 mb-3 flex items-center gap-2">
-                                          <Laptop className="h-4 w-4" />
-                                          OLD LAPTOP - {oldLaptopAge} years old
-                                        </p>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                            <p className="text-sm font-medium text-gray-900">{oldLaptop?.assetTag || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Model</p>
-                                            <p className="text-sm font-medium text-gray-900">{oldLaptop?.model || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                            <p className="text-sm font-medium text-gray-900">{oldLaptop?.serialNumber || 'N/A'}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                                        <p className="text-xs font-semibold text-blue-700 mb-3 flex items-center gap-2">
-                                          <Laptop className="h-4 w-4" />
-                                          NEW LAPTOP - {newLaptopAge} years old
-                                        </p>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                            <p className="text-sm font-medium text-gray-900">{newLaptop?.assetTag || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Model</p>
-                                            <p className="text-sm font-medium text-gray-900">{newLaptop?.model || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                            <p className="text-sm font-medium text-gray-900">{newLaptop?.serialNumber || 'N/A'}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                        <p className="text-xs font-semibold text-green-700 mb-3 flex items-center gap-2">
-                                          <Monitor className="h-4 w-4" />
-                                          DESKTOP
-                                        </p>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.assetTag || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Model</p>
-                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.model || 'N/A'}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-                                            <p className="text-sm font-medium text-gray-900">{userDesktop?.serialNumber || 'N/A'}</p>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        ) : (
-                          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                            <Monitor className="h-16 w-16 mx-auto text-gray-300 mb-3" />
-                            <p className="text-lg font-medium text-gray-600">No Users Found</p>
-                            <p className="text-sm text-gray-500 mt-2">
-                              No users currently have two laptops (one old, one new) with a desktop
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-                </Tabs>
-              </TabsContent>
-
-            </CardContent>
-          </Tabs>
-        </Card>
-      </div>
-    </div>
-  );
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
+    --popover: 224 71% 4%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 230 75% 56%;
+    --primary-foreground: 224 71% 4%;
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    --accent: 215 28% 17%;
+    --accent-foreground: 213 31% 91%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 213 31% 91%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 230 75% 56%;
+  }
 }
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f8faff 0%, #eef4ff 25%, #e0f0ff 50%, #f0f7ff 75%, #f8faff 100%);
+    background-attachment: fixed;
+    font-family: 'Inter', 'Segoe UI', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  body {
+    @apply text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background: linear-gradient(135deg, #f8faff 0%, #eef4ff 25%, #e0f0ff 50%, #f0f7ff 75%, #f8faff 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    color: #0f172a;
+    margin: 0;
+    padding: 0;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .dark html {
+    background: hsl(var(--background)) !important;
+    background-attachment: fixed !important;
+  }
+
+  .dark body {
+    background: hsl(var(--background)) !important;
+    background-attachment: fixed !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .dark * {
+    border-color: hsl(var(--border));
+  }
+
+  .dark *:not(.sidebar):not(.sidebar *) {
+    color: inherit;
+  }
+}
+
+/* Enterprise Sidebar Styling */
+.sidebar {
+  background: linear-gradient(180deg, #1e40af 0%, #3b82f6 25%, #6366f1 50%, #8b5cf6 75%, #a855f7 100%);
+  box-shadow: 4px 0 24px rgba(59, 130, 246, 0.15);
+  z-index: 90;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-item {
+  @apply relative flex items-center px-4 py-3 mx-3 rounded-xl text-white/85 hover:text-white hover:bg-white/15 transition-all duration-300 cursor-pointer;
+  backdrop-filter: blur(10px);
+}
+
+.sidebar-item:hover {
+  transform: translateX(2px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-item.active {
+  @apply bg-white/25 text-white shadow-lg;
+  backdrop-filter: blur(20px);
+}
+
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 32px;
+  background: linear-gradient(180deg, #fbbf24, #f59e0b);
+  border-radius: 0 4px 4px 0;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+}
+
+/* Premium Header Styling */
+.header {
+  background: rgba(255, 255, 255, 0.98);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 24px rgba(59, 130, 246, 0.08);
+  color: #0f172a;
+}
+
+.dark .header {
+  background: rgba(15, 23, 42, 0.98);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  color: #f1f5f9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 24px rgba(99, 102, 241, 0.15);
+}
+
+/* Enterprise Dashboard Cards */
+.dashboard-card {
+  @apply rounded-2xl border shadow-sm hover:shadow-lg transition-all duration-500 ease-out;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  color: #0f172a;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px rgba(59, 130, 246, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  transition: all 0.4s ease-out;
+}
+
+.dark .dashboard-card {
+  background: rgba(30, 41, 59, 0.98);
+  color: #f1f5f9;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* Premium Gradient Cards */
+.gradient-card-blue {
+  background: linear-gradient(135deg, #3b82f6 0%, #1e40af 50%, #1e3a8a 100%);
+  @apply text-white shadow-xl;
+  position: relative;
+  overflow: hidden;
+}
+
+.gradient-card-blue::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+
+.gradient-card-blue:hover::after {
+  transform: translateX(100%);
+}
+
+.gradient-card-green {
+  background: linear-gradient(135deg, #059669 0%, #047857 50%, #065f46 100%);
+  @apply text-white shadow-xl;
+}
+
+.gradient-card-purple {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%);
+  @apply text-white shadow-xl;
+}
+
+.gradient-card-orange {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #b45309 100%);
+  @apply text-white shadow-xl;
+}
+
+.gradient-card-pink {
+  background: linear-gradient(135deg, #ec4899 0%, #db2777 50%, #be185d 100%);
+  @apply text-white shadow-xl;
+}
+
+.gradient-card-teal {
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 50%, #134e4a 100%);
+  @apply text-white shadow-xl;
+}
+
+/* Premium Icon Containers */
+.icon-container {
+  @apply w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.icon-container-blue {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(30, 64, 175, 0.9));
+  @apply text-white;
+}
+
+.icon-container-green {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.9), rgba(4, 120, 87, 0.9));
+  @apply text-white;
+}
+
+.icon-container-orange {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.9), rgba(217, 119, 6, 0.9));
+  @apply text-white;
+}
+
+.icon-container-purple {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.9), rgba(124, 58, 237, 0.9));
+  @apply text-white;
+}
+
+/* Enterprise Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  @apply text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 font-medium;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-primary:hover::before {
+  left: 100%;
+}
+
+.btn-secondary {
+  @apply bg-white text-gray-700 px-8 py-3 rounded-xl border border-gray-200 shadow-md hover:shadow-lg hover:bg-gray-50 transition-all duration-300 font-medium;
+  backdrop-filter: blur(10px);
+}
+
+.dark .btn-secondary {
+  @apply bg-gray-800 text-gray-200 border-gray-700 hover:bg-gray-700;
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  @apply text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 font-medium;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  @apply text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 font-medium;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  @apply text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 font-medium;
+}
+
+/* Premium Table Styling */
+.data-table {
+  @apply rounded-2xl border overflow-hidden shadow-lg;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  color: #0f172a;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.dark .data-table {
+  background: rgba(30, 41, 59, 0.98);
+  color: #f1f5f9;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.table-header {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(99, 102, 241, 0.05));
+  @apply px-6 py-4 border-b;
+  color: #0f172a;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dark .table-header {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  color: #f1f5f9;
+}
+
+.table-row {
+  @apply px-6 py-4 border-b border-gray-100 hover:bg-blue-50/50 transition-colors duration-200;
+  color: #0f172a;
+}
+
+.dark .table-row {
+  @apply hover:bg-blue-900/20 border-gray-700;
+  color: #f1f5f9;
+}
+
+/* Premium Form Styling */
+.form-container {
+  @apply rounded-2xl border p-8 shadow-lg;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  color: #0f172a;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.dark .form-container {
+  background: rgba(30, 41, 59, 0.98);
+  color: #f1f5f9;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.form-input {
+  @apply w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+  border-color: rgba(59, 130, 246, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.dark .form-input {
+  background: rgba(30, 41, 59, 0.9);
+  color: #f1f5f9;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+/* Enhanced Badges */
+.badge-success {
+  background: linear-gradient(135deg, #059669, #047857);
+  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white shadow-md;
+}
+
+.badge-warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white shadow-md;
+}
+
+.badge-error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white shadow-md;
+}
+
+.badge-info {
+  background: linear-gradient(135deg, #3b82f6, #1e40af);
+  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white shadow-md;
+}
+
+/* Premium Chart Containers */
+.chart-container {
+  @apply rounded-2xl border p-6 shadow-lg;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.dark .chart-container {
+  background: rgba(30, 41, 59, 0.98);
+  color: #f1f5f9;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* Premium Metric Cards */
+.metric-card {
+  @apply rounded-2xl p-6 shadow-lg border relative overflow-hidden;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
+  color: #0f172a;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+  transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(59, 130, 246, 0.15);
+}
+
+.dark .metric-card {
+  background: rgba(30, 41, 59, 0.98);
+  color: #f1f5f9;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6);
+  background-size: 200% 200%;
+  animation: gradient-flow 3s ease infinite;
+}
+
+/* Animations */
+@keyframes gradient-flow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Enterprise Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+h1 {
+  @apply text-4xl;
+  background: linear-gradient(135deg, #1e40af, #6366f1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+h2 {
+  @apply text-3xl;
+  color: #1e40af;
+}
+
+.dark h2 {
+  color: #93c5fd;
+}
+
+/* Glass Effect Utilities */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .glass-effect {
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* Status Indicators */
+.status-online {
+  @apply w-3 h-3 bg-green-500 rounded-full shadow-lg;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+.status-offline {
+  @apply w-3 h-3 bg-red-500 rounded-full shadow-lg;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+.status-idle {
+  @apply w-3 h-3 bg-yellow-500 rounded-full shadow-lg;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+/* Enterprise Progress Bars */
+.progress-bar {
+  @apply w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner;
+}
+
+.progress-fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+}
+
+/* Dialog Content Styling */
+[data-radix-dialog-content] {
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 16px !important;
+}
+
+.dark [data-radix-dialog-content] {
+  background: rgba(15, 23, 42, 0.98) !important;
+  border: 1px solid rgba(99, 102, 241, 0.2) !important;
+  color: #f1f5f9 !important;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+}
+
+/* Enhanced scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3b82f6, #6366f1);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #1e40af, #4338ca);
+}
+
+/* Layout Fixes */
+.sidebar-container {
+  @apply fixed left-0 top-0 h-full w-64 z-30;
+}
+
+.main-content {
+  @apply ml-64 min-h-screen;
+}
+
+@media (max-width: 1023px) {
+  .main-content {
+    @apply ml-0;
+  }
+}
+
+/* Animation Classes */
+.animate-fade-in-left {
+  animation: fade-in-left 0.8s ease-out forwards;
+}
+
+.animate-fade-in-right {
+  animation: fade-in-right 0.8s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.8s ease-out forwards;
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.8s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.6s ease-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow 3s ease-in-out infinite;
+}
+
+.animate-stagger-in {
+  animation: stagger-in 0.8s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-stagger-in > * {
+  animation: stagger-in 0.6s ease-out forwards;
+  animation-delay: calc(0.1s * var(--stagger-delay, 0));
+}
+
+/* Modern Enterprise Authentication Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(60px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes expand-width {
+  from {
+    width: 0;
+  }
+  to {
+    width: 8rem;
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Animation Classes */
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.6s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.8s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+.animate-gradient-shift {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease-in-out infinite;
+}
+
+.animate-expand-width {
+  animation: expand-width 1.2s ease-out 0.5s forwards;
+  width: 0;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 6s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Delay Classes */
+.delay-200 { animation-delay: 0.2s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-600 { animation-delay: 0.6s; }
+.delay-800 { animation-delay: 0.8s; }
+.delay-1000 { animation-delay: 1s; }
+.delay-2000 { animation-delay: 2s; }
+
+/* Delay Classes */
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+.delay-500 {
+  animation-delay: 500ms;
+}
+
+.delay-800 {
+  animation-delay: 800ms;
+}
+
+.delay-1000 {
+  animation-delay: 1000ms;
+}
+
+.delay-1200 {
+  animation-delay: 1200ms;
+}
+
+/* Additional animated background classes */
+.bg-animated-mesh {
+  background: linear-gradient(45deg, #667eea, #764ba2, #f093fb, #f5576c, #4facfe, #00f2fe);
+  background-size: 400% 400%;
+  animation: gradient-shift 20s ease infinite;
+  opacity: 0.1;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+}
+
+/* Modern Tab Button Styling */
+[data-radix-tabs-trigger],
+.tabs-trigger,
+button[role="tab"] {
+  @apply relative px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-300 overflow-hidden;
+  background: rgba(255, 255, 255, 0.8);
+  color: #64748b;
+  border: 2px solid transparent;
+  backdrop-filter: blur(10px);
+}
+
+[data-radix-tabs-trigger]:hover,
+.tabs-trigger:hover,
+button[role="tab"]:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: #334155;
+  border-color: rgba(99, 102, 241, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+[data-radix-tabs-trigger][data-state="active"],
+.tabs-trigger[data-state="active"],
+button[role="tab"][aria-selected="true"] {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+[data-radix-tabs-trigger][data-state="active"]::before,
+.tabs-trigger[data-state="active"]::before,
+button[role="tab"][aria-selected="true"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.2) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+
+[data-radix-tabs-trigger][data-state="active"]:hover::before,
+.tabs-trigger[data-state="active"]:hover::before,
+button[role="tab"][aria-selected="true"]:hover::before {
+  transform: translateX(100%);
+}
+
+/* Dark mode tab styling */
+.dark [data-radix-tabs-trigger],
+.dark .tabs-trigger,
+.dark button[role="tab"] {
+  background: rgba(30, 41, 59, 0.8);
+  color: #94a3b8;
+  border-color: transparent;
+}
+
+.dark [data-radix-tabs-trigger]:hover,
+.dark .tabs-trigger:hover,
+.dark button[role="tab"]:hover {
+  background: rgba(51, 65, 85, 0.9);
+  color: #e2e8f0;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.dark [data-radix-tabs-trigger][data-state="active"],
+.dark .tabs-trigger[data-state="active"],
+.dark button[role="tab"][aria-selected="true"] {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+/* Tab list container styling */
+[data-radix-tabs-list],
+.tabs-list {
+  @apply rounded-2xl p-2 gap-2;
+  background: rgba(241, 245, 249, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dark [data-radix-tabs-list],
+.dark .tabs-list {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(51, 65, 85, 0.8);
+}
+
+/* Icon styling within tabs */
+[data-radix-tabs-trigger] svg,
+.tabs-trigger svg,
+button[role="tab"] svg {
+  @apply transition-transform duration-300;
+}
+
+[data-radix-tabs-trigger][data-state="active"] svg,
+.tabs-trigger[data-state="active"] svg,
+button[role="tab"][aria-selected="true"] svg {
+  transform: scale(1.1);
+}
+
+/* Enhanced Page-specific Styles with More Colors */
+.dashboard-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6;
+}
+
+.metric-card {
+  @apply bg-card rounded-2xl p-6 shadow-sm border border-border hover:shadow-md transition-all duration-700 relative overflow-hidden;
+  background-color: rgba(255, 255, 255, 0.98) !important;
+}
+
+.metric-card .card-description {
+  color: #0f172a !important;
+}
+
+.dark .metric-card {
+  background-color: rgba(30, 41, 59, 0.95) !important;
+  border-color: #475569 !important;
+}
+
+.dark .metric-card .card-description {
+  color: #f1f5f9 !important;
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea, #764ba2, #ff9a9e, #56ab2f);
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.metric-card-blue {
+  background: white;
+  border: 2px solid #3b82f6;
+  box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
+  color: #1e40af;
+}
+
+.dark .metric-card-blue {
+  background: #1e293b;
+  border: 2px solid #3b82f6;
+  color: #93c5fd;
+}
+
+.metric-card-green {
+  background: white;
+  border: 2px solid #10b981;
+  box-shadow: 0 4px 6px rgba(34, 197, 94, 0.2);
+  color: #047857;
+}
+
+.dark .metric-card-green {
+  background: #1e293b;
+  border: 2px solid #10b981;
+  color: #6ee7b7;
+}
+
+.metric-card-orange {
+  background: white;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2);
+  color: #d97706;
+}
+
+.dark .metric-card-orange {
+  background: #1e293b;
+  border: 2px solid #f59e0b;
+  color: #fcd34d;
+}
+
+.metric-card-purple {
+  background: white;
+  border: 2px solid #8b5cf6;
+  box-shadow: 0 4px 6px rgba(168, 85, 247, 0.2);
+  color: #7c3aed;
+}
+
+.dark .metric-card-purple {
+  background: #1e293b;
+  border: 2px solid #8b5cf6;
+  color: #c4b5fd;
+}
+
+.metric-card-pink {
+  background: white;
+  border: 2px solid #ec4899;
+  box-shadow: 0 4px 6px rgba(236, 72, 153, 0.2);
+  color: #db2777;
+}
+
+.dark .metric-card-pink {
+  background: #1e293b;
+  border: 2px solid #ec4899;
+  color: #f9a8d4;
+}
+
+.metric-card-teal {
+  background: white;
+  border: 2px solid #14b8a6;
+  box-shadow: 0 4px 6px rgba(20, 184, 166, 0.2);
+  color: #0f766e;
+}
+
+.dark .metric-card-teal {
+  background: #1e293b;
+  border: 2px solid #14b8a6;
+  color: #7dd3fc;
+}
+
+.metric-card-cyan {
+  background: white;
+  border: 2px solid #06b6d4;
+  box-shadow: 0 4px 6px rgba(6, 182, 212, 0.2);
+  color: #0891b2;
+}
+
+.dark .metric-card-cyan {
+  background: #1e293b;
+  border: 2px solid #06b6d4;
+  color: #a5f3fc;
+}
+
+.metric-value {
+  @apply text-3xl font-bold;
+  color: inherit;
+}
+
+.metric-label {
+  @apply text-sm mt-1;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.metric-change {
+  @apply text-sm font-medium mt-2;
+}
+
+.metric-change.positive {
+  @apply text-green-600 dark:text-green-400;
+}
+
+.metric-change.negative {
+  @apply text-red-600 dark:text-red-400;
+}
+
+.metric-change.neutral {
+  @apply text-blue-600 dark:text-blue-400;
+}
+
+/* Activity Feed */
+.activity-item {
+  @apply flex items-start space-x-3 p-4 hover:bg-muted/50 rounded-lg transition-colors duration-150;
+}
+
+.activity-icon {
+  @apply w-8 h-8 rounded-full flex items-center justify-center text-sm;
+}
+
+/* Navigation Breadcrumbs */
+.breadcrumb {
+  @apply flex items-center space-x-2 text-sm text-gray-600;
+}
+
+.breadcrumb-item {
+  @apply hover:text-gray-900 transition-colors duration-150;
+}
+
+.breadcrumb-separator {
+  @apply text-gray-400;
+}
+
+/* Status Indicators */
+.status-online {
+  @apply w-2 h-2 bg-green-500 rounded-full;
+}
+
+.status-offline {
+  @apply w-2 h-2 bg-red-500 rounded-full;
+}
+
+.status-idle {
+  @apply w-2 h-2 bg-yellow-500 rounded-full;
+}
+
+/* Progress Bars */
+.progress-bar {
+  @apply w-full bg-gray-200 rounded-full h-2 overflow-hidden;
+}
+
+.progress-fill {
+  @apply h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full transition-all duration-300;
+}
+
+/* Tooltip Styling */
+.tooltip {
+  @apply absolute z-50 px-3 py-2 text-sm bg-gray-900 text-white rounded-lg shadow-lg;
+}
+
+/* Print Styles */
+@media print {
+  .sidebar,
+  .header,
+  .no-print {
+    display: none !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+  }
+
+  .dashboard-card,
+  .stat-card {
+    break-inside: avoid;
+  }
+}
+
+/* Page container dark mode fixes */
+.page-container {
+  @apply min-h-screen transition-colors duration-200;
+  background: inherit;
+  color: inherit;
+}
+
+.dark .page-container {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Content area dark mode fixes */
+.content-area,
+.main-content,
+main {
+  @apply transition-colors duration-200;
+  background: inherit;
+  color: inherit;
+}
+
+.dark .content-area,
+.dark .main-content,
+.dark main {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Card components dark mode fixes */
+.card,
+[data-component="card"] {
+  @apply transition-colors duration-200;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .card,
+.dark [data-component="card"] {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Form elements dark mode fixes */
+.form-container,
+form {
+  @apply transition-colors duration-200;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.dark .form-container,
+.dark form {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+/* Input elements dark mode fixes */
+input,
+textarea,
+select {
+  @apply transition-colors duration-200;
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: hsl(var(--ring)) !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2) !important;
+}
+
+/* Table dark mode fixes */
+table,
+.table-container {
+  @apply transition-colors duration-200;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.dark table,
+.dark .table-container {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+th,
+td {
+  @apply transition-colors duration-200;
+  border-color: hsl(var(--border)) !important;
+  color: inherit !important;
+}
+
+.dark th,
+.dark td {
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+/* Modal and dialog dark mode fixes */
+.modal,
+.dialog,
+[data-radix-dialog-content],
+[data-radix-alert-dialog-content] {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .modal,
+.dark .dialog,
+.dark [data-radix-dialog-content],
+.dark [data-radix-alert-dialog-content] {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Dropdown and popover dark mode fixes */
+.dropdown-menu,
+.popover,
+[data-radix-dropdown-content],
+[data-radix-popover-content] {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .dropdown-menu,
+.dark .popover,
+.dark [data-radix-dropdown-content],
+.dark [data-radix-popover-content] {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Text and heading dark mode fixes */
+h1, h2, h3, h4, h5, h6 {
+  @apply transition-colors duration-200;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+  color: hsl(var(--foreground)) !important;
+}
+
+p, span, div:not(.sidebar):not(.sidebar *) {
+  @apply transition-colors duration-200;
+  color: inherit;
+}
+
+.dark p,
+.dark span,
+.dark div:not(.sidebar):not(.sidebar *) {
+  color: hsl(var(--foreground));
+}
+
+/* Badge dark mode fixes */
+.badge {
+  @apply transition-colors duration-200;
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.dark .badge {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Enhanced button styling with proper visibility */
+  button:not(.sidebar-item):not(.sidebar *) {
+    @apply font-medium transition-all duration-200;
+    min-height: 40px;
+    border-radius: 8px;
+  }
+
+  /* Primary button styling */
+  .btn-primary,
+  button[type="submit"]:not(.sidebar *),
+  button[data-variant="default"]:not(.sidebar *),
+  .bg-primary:not(.sidebar *) {
+    @apply bg-blue-600 text-white hover:bg-blue-700 border-0 shadow-sm hover:shadow-md;
+  }
+
+  /* Secondary button styling */
+  .btn-secondary,
+  button[data-variant="secondary"]:not(.sidebar *),
+  .bg-secondary:not(.sidebar *) {
+    @apply bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-300 shadow-sm hover:shadow-md;
+  }
+
+  /* Outline button styling */
+  button[data-variant="outline"]:not(.sidebar *) {
+    @apply bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 shadow-sm hover:shadow-md;
+  }
+
+  /* Ghost button styling */
+  button[data-variant="ghost"]:not(.sidebar *) {
+    @apply bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 border-0;
+  }
+
+  /* Destructive button styling */
+  button[data-variant="destructive"]:not(.sidebar *),
+  .btn-danger:not(.sidebar *) {
+    @apply bg-red-600 text-white hover:bg-red-700 border-0 shadow-sm hover:shadow-md;
+  }
+
+  /* Success button styling */
+  .btn-success:not(.sidebar *) {
+    @apply bg-green-600 text-white hover:bg-green-700 border-0 shadow-sm hover:shadow-md;
+  }
+
+  /* Warning button styling */
+  .btn-warning:not(.sidebar *) {
+    @apply bg-yellow-500 text-white hover:bg-yellow-600 border-0 shadow-sm hover:shadow-md;
+  }
+
+  /* Dark mode overrides */
+  .dark .btn-primary,
+  .dark button[type="submit"]:not(.sidebar *),
+  .dark button[data-variant="default"]:not(.sidebar *),
+  .dark .bg-primary:not(.sidebar *) {
+    @apply bg-blue-500 text-white hover:bg-blue-400;
+  }
+
+  .dark .btn-secondary,
+  .dark button[data-variant="secondary"]:not(.sidebar *),
+  .dark .bg-secondary:not(.sidebar *) {
+    @apply bg-gray-700 text-gray-100 hover:bg-gray-600 border-gray-600;
+  }
+
+  .dark button[data-variant="outline"]:not(.sidebar *) {
+    @apply bg-gray-800 text-gray-200 hover:bg-gray-700 border-gray-600;
+  }
+
+  .dark button[data-variant="ghost"]:not(.sidebar *) {
+    @apply text-gray-300 hover:bg-gray-800 hover:text-gray-100;
+  }
+
+  .dark button[data-variant="destructive"]:not(.sidebar *),
+  .dark .btn-danger:not(.sidebar *) {
+    @apply bg-red-500 text-white hover:bg-red-400;
+  }
+
+  .dark .btn-success:not(.sidebar *) {
+    @apply bg-green-500 text-white hover:bg-green-400;
+  }
+
+  .dark .btn-warning:not(.sidebar *) {
+    @apply bg-yellow-600 text-white hover:bg-yellow-500;
+  }
+
+  /* Form button specific styling */
+  form button[type="submit"]:not(.sidebar *),
+  form button:not([type]):not(.sidebar *) {
+    @apply bg-blue-600 text-white hover:bg-blue-700 px-6 py-2.5 rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  form button[type="button"]:not(.sidebar *) {
+    @apply bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 px-6 py-2.5 rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  .dark form button[type="submit"]:not(.sidebar *),
+  .dark form button:not([type]):not(.sidebar *) {
+    @apply bg-blue-500 text-white hover:bg-blue-400;
+  }
+
+  .dark form button[type="button"]:not(.sidebar *) {
+    @apply bg-gray-700 text-gray-200 hover:bg-gray-600 border-gray-600;
+  }
+
+/* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground));
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--accent));
+  }
+
+  /* Force dark mode overrides for stubborn white backgrounds */
+.dark [style*="background: white"],
+.dark [style*="background-color: white"],
+.dark [style*="background: #ffffff"],
+.dark [style*="background-color: #ffffff"],
+.dark [style*="background: #fff"],
+.dark [style*="background-color: #fff"] {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.dark .bg-white {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.dark .text-black,
+.dark .text-gray-900 {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Notifications page specific fixes */
+.dark .notifications-page {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .notification-item {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* Settings page specific fixes */
+.dark .settings-page {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Activity page specific fixes */
+.dark .activity-page {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Assets page specific fixes */
+.dark .assets-page {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Universal page wrapper fix */
+.dark [data-page],
+.dark .page-wrapper,
+.dark .page-content {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Enhanced utility classes for consistent button styling */
+  .btn-add,
+  .btn-save,
+  .btn-create,
+  .btn-update {
+    @apply bg-blue-600 text-white hover:bg-blue-700 border-0 font-medium px-6 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  .dark .btn-add,
+  .dark .btn-save,
+  .dark .btn-create,
+  .dark .btn-update {
+    @apply bg-blue-500 text-white hover:bg-blue-400 border-0;
+  }
+
+  .btn-cancel,
+  .btn-secondary-action {
+    @apply bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 font-medium px-6 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  .dark .btn-cancel,
+  .dark .btn-secondary-action {
+    @apply bg-gray-700 text-gray-200 hover:bg-gray-600 border-gray-600;
+  }
+
+  /* Dialog and modal button styling */
+  [data-radix-dialog-content] button:not(.sidebar *) {
+    @apply font-medium transition-all duration-200 shadow-sm hover:shadow-md;
+  }
+
+  /* Table action button styling */
+  .table-actions button:not(.sidebar *) {
+    @apply px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200;
+  }
+
+  /* Form group button styling */
+  .form-actions button:not(.sidebar *) {
+    @apply px-6 py-2.5 font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md;
+  }
