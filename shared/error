@@ -91,7 +91,7 @@ export default function ReportsSecondary() {
     queryClient.invalidateQueries({ queryKey: ['/api/assets'] });
     queryClient.invalidateQueries({ queryKey: ['/api/users'] });
     queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/consumables'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/it-equipment'] });
     queryClient.invalidateQueries({ queryKey: ['/api/licenses'] });
   }, [queryClient]);
 
@@ -135,10 +135,10 @@ export default function ReportsSecondary() {
   });
 
   const { data: consumables = [], isLoading: isLoadingConsumables } = useQuery({
-    queryKey: ["consumables"],
+    queryKey: ["it-equipment"],
     queryFn: async () => {
-      const response = await fetch("/api/consumables", { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch consumables");
+      const response = await fetch("/api/it-equipment", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch IT equipment");
       return response.json();
     },
   });
@@ -694,9 +694,9 @@ export default function ReportsSecondary() {
               color="purple"
             />
           </div>
-          <div onClick={() => window.location.href = '/consumables'} className="cursor-pointer">
+          <div onClick={() => window.location.href = '/it-equipment'} className="cursor-pointer">
             <MetricCard
-              title="Consumables"
+              title="IT Equipment"
               value={consumables.length}
               subtitle={`${consumables.filter((c: any) => c.status === 'available').length} available`}
               icon={Package}
